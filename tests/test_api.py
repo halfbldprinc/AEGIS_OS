@@ -212,6 +212,34 @@ def test_process_and_execute_permission_prompt_once_flow():
     assert rerun.json()['status'] in ['SUCCEEDED', 'FAILED']
 
 
+def test_permission_pending_and_decide_once_flow():
+    app.state.daemon = AegisDaemon()
+
+    client.post('/v1/guardian/revoke', json={'skill_name': 'echo', 'action': 'echo'})
+    client.post('/v1/guardian/revoke', json={'skill_name': 'echo', 'action': 'all'})
+
+    response = client.post('/v1/process-and-execute', json={'text': 'echo pending approval'})
+    assert response.status_code == 200
+    approval = response.json().get('approval', {})
+    assert approval.get('plan_id')
+
+    pending = client.get('/v1/permissions/pending')
+    assert pending.status_code == 200
+    rows = pending.json().get('pending', [])
+    assert any(item.get('plan_id') == approval['plan_id'] for item in rows)
+
+    decide = client.post(
+        '/v1/permissions/decide',
+        json={
+            'plan_id': approval['plan_id'],
+            'step_id': approval['step_id'],
+            'decision': 'once',
+        },
+    )
+    assert decide.status_code == 200
+    assert decide.json()['status'] in ['SUCCEEDED', 'FAILED']
+
+
 def test_evolution_approve_endpoint():
     # Use the API's singleton manager instance for correctness.
     from aegis.api import evolution_manager
@@ -326,6 +354,14 @@ def test_update_lifecycle_endpoints(tmp_path):
     assert response.status_code == 200
     assert response.json()["status"] == "applied"
 
+    response = client.post(
+        "/v1/update/rollback",
+        json={
+            "component": "agent",
+        },
+    )
+    assert response.status_code == 422
+
 
 def test_desktop_integration_endpoints(tmp_path):
     response = client.get("/v1/desktop/integration/status", params={"home_dir": str(tmp_path)})
@@ -341,6 +377,17 @@ def test_desktop_integration_endpoints(tmp_path):
     assert response.status_code == 200
     planned = response.json()
     assert planned["status"] == "planned"
+
+
+def test_control_center_overview_endpoint():
+    app.state.daemon = AegisDaemon()
+    response = client.get("/v1/control-center/overview")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "mode" in payload
+    assert "updates" in payload
+    assert "policy" in payload
+    assert "pending_approvals" in payload
 
 
 def test_desktop_widget_endpoints(tmp_path):

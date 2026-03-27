@@ -20,6 +20,7 @@ from .skills.browser_skill import BrowserSkill
 from .skills.email_skill import EmailSkill
 from .skills.reminder_skill import ReminderSkill
 from .skills.calendar_skill import CalendarSkill
+from .skills.system_control_skill import SystemControlSkill
 from .planner import Planner
 from .llm.runtime import LLMRuntime
 from .state import SystemState
@@ -122,6 +123,7 @@ class AegisDaemon:
         self.orchestrator.register_skill(EmailSkill())
         self.orchestrator.register_skill(ReminderSkill())
         self.orchestrator.register_skill(CalendarSkill())
+        self.orchestrator.register_skill(SystemControlSkill())
 
     def start(self) -> None:
         logger.info("Starting Aegis daemon in %s", self.state.get("mode"))
@@ -340,6 +342,43 @@ class AegisDaemon:
         self.plan_store[plan.id] = executed_plan
         return executed_plan
 
+    def decide_plan_step(self, plan_id: str, step_id: str, decision: str) -> Plan:
+        mode = (decision or "").strip().lower()
+        if mode not in {"once", "always", "deny"}:
+            raise ValueError("decision must be one of: once, always, deny")
+
+        plan = self.get_plan(plan_id)
+        if plan is None:
+            raise KeyError(f"Plan not found: {plan_id}")
+
+        step = next((s for s in plan.steps if s.id == step_id), None)
+        if step is None:
+            raise KeyError(f"Step not found: {step_id}")
+
+        if mode == "deny":
+            step.status = "DENIED"
+            step.result = None
+            self.audit_log.record(
+                "daemon",
+                "plan_step_denied",
+                {"plan_id": plan_id, "step_id": step_id, "decision": "deny"},
+            )
+            plan.mark_failed()
+            return plan
+
+        if mode == "always":
+            self.orchestrator.guardian.grant(step.skill_name, step.action)
+
+        step.params["confirmed"] = True
+        self.audit_log.record(
+            "daemon",
+            "plan_step_approved",
+            {"plan_id": plan_id, "step_id": step_id, "decision": mode},
+        )
+        executed_plan = self.orchestrator.execute_plan(plan, allow_failure=False)
+        self.plan_store[plan.id] = executed_plan
+        return executed_plan
+
     def _permission_request_from_plan(self, plan: Plan) -> Dict[str, Any] | None:
         for step in plan.steps:
             if step.status != "DENIED" or step.result is None:
@@ -356,6 +395,14 @@ class AegisDaemon:
                 "requires_approval": True,
             }
         return None
+
+    def list_pending_approvals(self) -> List[Dict[str, Any]]:
+        pending: List[Dict[str, Any]] = []
+        for plan in self.plan_store.values():
+            req = self._permission_request_from_plan(plan)
+            if req is not None:
+                pending.append(req)
+        return pending
 
     def execute_plan_by_id(self, plan_id: str, allow_failure: bool = False) -> Dict[str, Any]:
         plan = self.get_plan(plan_id)

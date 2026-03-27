@@ -117,3 +117,40 @@ class UpdateManager:
             self._state["history"] = self._state["history"][-200:]
             self._save()
             return record.__dict__.copy()
+
+    def rollback_update(self, component: str) -> Dict[str, Any]:
+        normalized_component = self._normalize_component(component)
+        with self._lock:
+            current_version = str(self._state["current"].get(normalized_component, ""))
+            history = [
+                item
+                for item in self._state.get("history", [])
+                if isinstance(item, dict) and item.get("component") == normalized_component
+            ]
+
+            if not history:
+                raise ValueError(f"No update history available for component '{normalized_component}'")
+
+            previous_version = None
+            for item in reversed(history):
+                version = str(item.get("version", ""))
+                if version and version != current_version:
+                    previous_version = version
+                    break
+
+            if not previous_version:
+                raise ValueError(
+                    f"No previous version found to rollback component '{normalized_component}'"
+                )
+
+            self._state["current"][normalized_component] = previous_version
+            record = UpdateRecord(
+                component=normalized_component,
+                version=previous_version,
+                source="rollback",
+                applied_at=time.time(),
+            )
+            self._state["history"].append(record.__dict__)
+            self._state["history"] = self._state["history"][-200:]
+            self._save()
+            return record.__dict__.copy()

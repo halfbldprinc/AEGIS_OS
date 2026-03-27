@@ -48,6 +48,13 @@ class RuleFallbackPlanner:
                 plan.add_step(skill_name="reminder", action=action, params=params)
                 return plan
 
+        if "system_control" in available_skills:
+            parsed = self.parse_system_control_action(lower)
+            if parsed is not None:
+                action, params = parsed
+                plan.add_step(skill_name="system_control", action=action, params=params)
+                return plan
+
         if "package_manager" in available_skills:
             parsed = self.parse_package_action(lower)
             if parsed is not None:
@@ -178,5 +185,43 @@ class RuleFallbackPlanner:
 
         if lower in ("list installed packages", "show installed packages"):
             return "list_installed", {"limit": 100}
+
+        return None
+
+    @staticmethod
+    def parse_system_control_action(lower: str) -> Optional[tuple[str, Dict[str, Any]]]:
+        status_match = re.match(r"^(service status|status service)\s+([a-z0-9_.@-]{1,128})$", lower)
+        if status_match:
+            return "service_status", {"service": status_match.group(2)}
+
+        start_match = re.match(r"^(start service)\s+([a-z0-9_.@-]{1,128})$", lower)
+        if start_match:
+            return "service_start", {"service": start_match.group(2), "confirmed": False}
+
+        stop_match = re.match(r"^(stop service)\s+([a-z0-9_.@-]{1,128})$", lower)
+        if stop_match:
+            return "service_stop", {"service": stop_match.group(2), "confirmed": False}
+
+        restart_match = re.match(r"^(restart service)\s+([a-z0-9_.@-]{1,128})$", lower)
+        if restart_match:
+            return "service_restart", {"service": restart_match.group(2), "confirmed": False}
+
+        if lower in {"wifi status", "status wifi"}:
+            return "wifi_status", {}
+
+        if lower in {"turn wifi on", "enable wifi", "wifi on"}:
+            return "wifi_toggle", {"enabled": True, "confirmed": False}
+
+        if lower in {"turn wifi off", "disable wifi", "wifi off"}:
+            return "wifi_toggle", {"enabled": False, "confirmed": False}
+
+        if lower in {"bluetooth status", "status bluetooth"}:
+            return "bluetooth_status", {}
+
+        if lower in {"turn bluetooth on", "enable bluetooth", "bluetooth on"}:
+            return "bluetooth_toggle", {"enabled": True, "confirmed": False}
+
+        if lower in {"turn bluetooth off", "disable bluetooth", "bluetooth off"}:
+            return "bluetooth_toggle", {"enabled": False, "confirmed": False}
 
         return None

@@ -398,6 +398,12 @@ class ConfirmPayload(BaseModel):
     approved: bool
 
 
+class PermissionDecisionPayload(BaseModel):
+    plan_id: str = Field(min_length=1, max_length=128)
+    step_id: str = Field(min_length=1, max_length=128)
+    decision: str = Field(min_length=1, max_length=16)
+
+
 class VoiceTextPayload(BaseModel):
     transcript: str = Field(max_length=50000)
 
@@ -460,6 +466,39 @@ def confirm_plan(payload: ConfirmPayload) -> dict:
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"plan_id": plan.id, "status": plan.status, "steps": [{"id": s.id, "status": s.status, "result": s.result.data if s.result else None} for s in plan.steps]}
+
+
+@app.get("/v1/permissions/pending")
+def list_pending_permission_requests() -> dict:
+    daemon_ref = _get_daemon()
+    return {"pending": daemon_ref.list_pending_approvals()}
+
+
+@app.post("/v1/permissions/decide")
+def decide_permission_request(payload: PermissionDecisionPayload) -> dict:
+    daemon_ref = _get_daemon()
+    try:
+        plan = daemon_ref.decide_plan_step(payload.plan_id, payload.step_id, payload.decision)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    return {
+        "plan_id": plan.id,
+        "status": plan.status,
+        "decision": payload.decision,
+        "steps": [
+            {
+                "id": s.id,
+                "skill": s.skill_name,
+                "action": s.action,
+                "status": s.status,
+                "result": s.result.data if s.result else None,
+            }
+            for s in plan.steps
+        ],
+    }
 
 
 @app.post("/v1/voice/process-text")
@@ -699,6 +738,10 @@ class ApplyUpdatePayload(BaseModel):
     source: str = Field(default="manual", min_length=1, max_length=64)
 
 
+class RollbackUpdatePayload(BaseModel):
+    component: str = Field(min_length=1, max_length=32)
+
+
 class DesktopHooksPayload(BaseModel):
     home_dir: Optional[str] = None
     dry_run: bool = False
@@ -778,6 +821,38 @@ def apply_update(payload: ApplyUpdatePayload) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"status": "applied", "record": record}
+
+
+@app.post("/v1/update/rollback")
+def rollback_update(payload: RollbackUpdatePayload) -> dict:
+    try:
+        record = update_manager.rollback_update(payload.component)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"status": "rolled_back", "record": record}
+
+
+@app.get("/v1/control-center/overview")
+def control_center_overview() -> dict:
+    daemon_ref = _get_daemon()
+    voice_running = bool(
+        getattr(daemon_ref, "_voice_monitor_thread", None)
+        and daemon_ref._voice_monitor_thread.is_alive()
+    )
+    policy = daemon_ref.orchestrator.policy
+    profile = policy.get_profile() if isinstance(policy, DefaultExecutionPolicy) else {"profile": "unknown"}
+    return {
+        "mode": daemon_ref.state.get("mode"),
+        "voice_monitor_running": voice_running,
+        "llm_runtime": {
+            "available": daemon_ref.llm_runtime.health(),
+            "profile": daemon_ref.llm_runtime.runtime_profile(),
+        },
+        "updates": update_manager.status(),
+        "policy": profile,
+        "pending_approvals": daemon_ref.list_pending_approvals(),
+        "telemetry": daemon_ref.get_telemetry(),
+    }
 
 
 @app.get("/v1/desktop/integration/status")
