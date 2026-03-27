@@ -406,6 +406,11 @@ class VoiceAudioPayload(BaseModel):
     audio_path: str = Field(min_length=1, max_length=4096)
 
 
+class VoiceHandsFreePayload(BaseModel):
+    no_wakeword: bool = False
+    poll_interval: float = Field(default=0.2, ge=0.01, le=10.0)
+
+
 class FeedbackPayload(BaseModel):
     turn_id: str = Field(min_length=1, max_length=128)
     satisfaction: int = Field(ge=1, le=5)
@@ -475,6 +480,49 @@ def process_voice_audio(payload: VoiceAudioPayload) -> dict:
         raise HTTPException(status_code=404, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.post("/v1/voice/hands-free/start")
+def start_voice_hands_free(payload: VoiceHandsFreePayload) -> dict:
+    daemon_ref = _get_daemon()
+    wakeword_required = not payload.no_wakeword
+    daemon_ref.start_voice_monitoring(
+        wakeword_required=wakeword_required,
+        poll_interval=payload.poll_interval,
+    )
+    return {
+        "status": "started",
+        "hands_free": True,
+        "wakeword_required": wakeword_required,
+        "poll_interval": payload.poll_interval,
+    }
+
+
+@app.post("/v1/voice/hands-free/stop")
+def stop_voice_hands_free() -> dict:
+    daemon_ref = _get_daemon()
+    daemon_ref.stop_voice_monitoring()
+    return {
+        "status": "stopped",
+        "hands_free": False,
+    }
+
+
+@app.get("/v1/voice/hands-free/status")
+def voice_hands_free_status() -> dict:
+    daemon_ref = _get_daemon()
+    running = bool(getattr(daemon_ref, "_voice_monitor_thread", None) and daemon_ref._voice_monitor_thread.is_alive())
+    mic_source = getattr(daemon_ref.voice_session, "microphone_source", None)
+    backend_ready = None
+    backend_detail = "unavailable"
+    if mic_source and hasattr(mic_source, "backend_status"):
+        backend_ready, backend_detail = mic_source.backend_status()
+    return {
+        "hands_free": running,
+        "voice_monitor_running": running,
+        "microphone_backend_ready": backend_ready,
+        "microphone_backend_detail": backend_detail,
+    }
 
 
 @app.post("/v1/feedback/rate")
@@ -656,6 +704,12 @@ class DesktopHooksPayload(BaseModel):
     dry_run: bool = False
 
 
+class DesktopWidgetPayload(BaseModel):
+    home_dir: Optional[str] = None
+    dry_run: bool = False
+    autostart: bool = True
+
+
 class PolicyProfilePayload(BaseModel):
     profile: str = Field(min_length=1, max_length=32)
 
@@ -734,6 +788,20 @@ def desktop_integration_status(home_dir: Optional[str] = None) -> dict:
 @app.post("/v1/desktop/integration/install-user-hooks")
 def install_desktop_user_hooks(payload: DesktopHooksPayload) -> dict:
     return desktop_integration_manager.install_user_hooks(home_dir=payload.home_dir, dry_run=payload.dry_run)
+
+
+@app.get("/v1/desktop/widget/status")
+def desktop_widget_status(home_dir: Optional[str] = None) -> dict:
+    return desktop_integration_manager.widget_status(home_dir=home_dir)
+
+
+@app.post("/v1/desktop/widget/install")
+def install_desktop_widget(payload: DesktopWidgetPayload) -> dict:
+    return desktop_integration_manager.install_widget(
+        home_dir=payload.home_dir,
+        dry_run=payload.dry_run,
+        autostart=payload.autostart,
+    )
 
 
 @app.get("/v1/policy/profile")

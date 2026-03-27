@@ -12,6 +12,9 @@ class DesktopIntegrationPaths:
     nautilus_script: Path
     helper_script: Path
     shell_rc: Path
+    widget_launcher_desktop: Path
+    widget_autostart_desktop: Path
+    widget_script: Path
 
 
 class DesktopIntegrationManager:
@@ -29,6 +32,9 @@ class DesktopIntegrationManager:
             nautilus_script=home / ".local/share/nautilus/scripts/AegisOS Ask Agent",
             helper_script=home / ".local/bin/aegis-ask",
             shell_rc=home / ".bashrc",
+            widget_launcher_desktop=home / ".local/share/applications/aegisos-widget.desktop",
+            widget_autostart_desktop=home / ".config/autostart/aegisos-widget.desktop",
+            widget_script=home / ".local/bin/aegis-widget",
         )
 
     def status(self, home_dir: str | None = None) -> Dict[str, Any]:
@@ -44,12 +50,31 @@ class DesktopIntegrationManager:
             "file_manager_action_installed": paths.nautilus_script.exists(),
             "terminal_alias_installed": shell_alias,
             "helper_script_installed": paths.helper_script.exists(),
+            "widget_launcher_installed": paths.widget_launcher_desktop.exists(),
+            "widget_autostart_installed": paths.widget_autostart_desktop.exists(),
+            "widget_script_installed": paths.widget_script.exists(),
             "paths": {
                 "autostart_desktop": str(paths.autostart_desktop),
                 "launcher_desktop": str(paths.launcher_desktop),
                 "nautilus_script": str(paths.nautilus_script),
                 "helper_script": str(paths.helper_script),
                 "shell_rc": str(paths.shell_rc),
+                "widget_launcher_desktop": str(paths.widget_launcher_desktop),
+                "widget_autostart_desktop": str(paths.widget_autostart_desktop),
+                "widget_script": str(paths.widget_script),
+            },
+        }
+
+    def widget_status(self, home_dir: str | None = None) -> Dict[str, Any]:
+        paths = self._paths_for_home(home_dir)
+        return {
+            "widget_launcher_installed": paths.widget_launcher_desktop.exists(),
+            "widget_autostart_installed": paths.widget_autostart_desktop.exists(),
+            "widget_script_installed": paths.widget_script.exists(),
+            "paths": {
+                "widget_launcher_desktop": str(paths.widget_launcher_desktop),
+                "widget_autostart_desktop": str(paths.widget_autostart_desktop),
+                "widget_script": str(paths.widget_script),
             },
         }
 
@@ -126,3 +151,50 @@ class DesktopIntegrationManager:
                 f.write(alias_line + "\n")
 
         return {"status": "installed", "result": self.status(home_dir=home_dir)}
+
+    def install_widget(self, home_dir: str | None = None, dry_run: bool = False, autostart: bool = True) -> Dict[str, Any]:
+        paths = self._paths_for_home(home_dir)
+
+        widget_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "exec python3 -m aegis.ui.chat_widget\n"
+        )
+
+        widget_desktop = (
+            "[Desktop Entry]\n"
+            "Version=1.0\n"
+            "Type=Application\n"
+            "Name=AegisOS Widget\n"
+            "Comment=Always-on desktop chat widget\n"
+            f"Exec={paths.widget_script}\n"
+            "Terminal=false\n"
+            "Categories=Utility;\n"
+            "X-GNOME-Autostart-enabled=true\n"
+        )
+
+        if dry_run:
+            return {
+                "status": "planned",
+                "autostart": autostart,
+                "files": {
+                    "widget_script": str(paths.widget_script),
+                    "widget_launcher_desktop": str(paths.widget_launcher_desktop),
+                    "widget_autostart_desktop": str(paths.widget_autostart_desktop),
+                },
+            }
+
+        paths.widget_script.parent.mkdir(parents=True, exist_ok=True)
+        paths.widget_launcher_desktop.parent.mkdir(parents=True, exist_ok=True)
+        paths.widget_autostart_desktop.parent.mkdir(parents=True, exist_ok=True)
+
+        paths.widget_script.write_text(widget_script, encoding="utf-8")
+        paths.widget_script.chmod(0o755)
+
+        paths.widget_launcher_desktop.write_text(widget_desktop, encoding="utf-8")
+        if autostart:
+            paths.widget_autostart_desktop.write_text(widget_desktop, encoding="utf-8")
+        elif paths.widget_autostart_desktop.exists():
+            paths.widget_autostart_desktop.unlink()
+
+        return {"status": "installed", "autostart": autostart, "result": self.widget_status(home_dir=home_dir)}

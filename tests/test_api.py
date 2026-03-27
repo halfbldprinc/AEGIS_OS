@@ -242,6 +242,38 @@ def test_voice_process_text_endpoint_rejects_empty_input():
     assert response.status_code == 400
 
 
+def test_voice_hands_free_endpoints(monkeypatch):
+    app.state.daemon = AegisDaemon()
+    daemon_ref = app.state.daemon
+
+    started = {"value": False}
+
+    def _start(wakeword_required=True, poll_interval=1.0):
+        started["value"] = True
+
+    def _stop():
+        started["value"] = False
+
+    monkeypatch.setattr(daemon_ref, "start_voice_monitoring", _start)
+    monkeypatch.setattr(daemon_ref, "stop_voice_monitoring", _stop)
+
+    response = client.post(
+        "/v1/voice/hands-free/start",
+        json={"no_wakeword": True, "poll_interval": 0.15},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "started"
+    assert response.json()["wakeword_required"] is False
+
+    status = client.get("/v1/voice/hands-free/status")
+    assert status.status_code == 200
+    assert "hands_free" in status.json()
+
+    stop = client.post("/v1/voice/hands-free/stop")
+    assert stop.status_code == 200
+    assert stop.json()["status"] == "stopped"
+
+
 def test_ops_soak_endpoint():
     response = client.post("/v1/ops/soak", json={"cycles": 2, "sleep_s": 0.0})
     assert response.status_code == 200
@@ -309,6 +341,19 @@ def test_desktop_integration_endpoints(tmp_path):
     assert response.status_code == 200
     planned = response.json()
     assert planned["status"] == "planned"
+
+
+def test_desktop_widget_endpoints(tmp_path):
+    status = client.get("/v1/desktop/widget/status", params={"home_dir": str(tmp_path)})
+    assert status.status_code == 200
+    assert "widget_script_installed" in status.json()
+
+    install = client.post(
+        "/v1/desktop/widget/install",
+        json={"home_dir": str(tmp_path), "dry_run": True, "autostart": True},
+    )
+    assert install.status_code == 200
+    assert install.json()["status"] == "planned"
 
 
 def test_policy_profile_endpoints(tmp_path, monkeypatch):
