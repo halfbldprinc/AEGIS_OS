@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 from .daemon import AegisDaemon
 from .ai_execution import AIExecutionEngine
 from .ai_diagnostics import AIExecutionDiagnostics
+from .chat_cli import InteractiveChat, ChatSession
+from .firstboot_wizard import FirstBootWizard
 from .desktop_integration import DesktopIntegrationManager
 from .evolution import EvolutionManager
 from .guardian import Guardian
@@ -30,6 +32,8 @@ configure_logging()
 daemon = AegisDaemon()
 memory_store = MemoryStore()
 ai_diagnostics = AIExecutionDiagnostics()
+interactive_chat = InteractiveChat()
+firstboot_wizard = FirstBootWizard()
 
 
 def _validate_memory_scope(scope: Optional[str]) -> Optional[str]:
@@ -546,6 +550,78 @@ def get_conversation_stats(session_id: str | None = None) -> dict:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/v1/chat/message")
+def chat_message(payload: ChatMessagePayload) -> dict:
+    """Send a message to the interactive chat interface."""
+    daemon_ref = _get_daemon()
+    
+    # Initialize chat with daemon and runtime if not already done
+    interactive_chat.daemon = daemon_ref
+    interactive_chat.llm_runtime = daemon_ref.llm_runtime
+    
+    # Start session if needed
+    if not interactive_chat.session:
+        interactive_chat.start_session(payload.session_id)
+    
+    # Process input
+    response = interactive_chat.process_input(payload.message)
+    
+    return {
+        "session_id": interactive_chat.session.session_id if interactive_chat.session else None,
+        "user_message": payload.message,
+        "agent_response": response,
+        "session_active": interactive_chat.session.active if interactive_chat.session else False,
+    }
+
+
+@app.get("/v1/chat/session")
+def get_chat_session() -> dict:
+    """Get current chat session info."""
+    if not interactive_chat.session:
+        return {"session_id": None, "messages": []}
+    return {
+        "session_id": interactive_chat.session.session_id,
+        "messages": interactive_chat.session.get_history(),
+        "active": interactive_chat.session.active,
+    }
+
+
+@app.post("/v1/chat/clear")
+def clear_chat() -> dict:
+    """Clear chat history."""
+    if interactive_chat.session:
+        interactive_chat.session.clear()
+        return {"status": "cleared"}
+    return {"status": "no_active_session"}
+
+
+@app.get("/v1/firstboot/status")
+def get_firstboot_status() -> dict:
+    """Check if first-boot wizard should run."""
+    return {
+        "should_run": firstboot_wizard.should_run(),
+        "completed": firstboot_wizard.completed,
+    }
+
+
+@app.post("/v1/firstboot/run")
+def run_firstboot(payload: FirstBootCheckPayload) -> dict:
+    """Run first-boot wizard (interactive)."""
+    if not payload.force and not firstboot_wizard.should_run():
+        return {
+            "status": "already_completed",
+            "message": "First-boot setup was already completed.",
+        }
+    
+    # Note: This endpoint is meant for programmatic use; the wizard is typically
+    # run from CLI (aegis-firstboot). This API version would return responses
+    # for frontend use.
+    responses = firstboot_wizard.get_responses()
+    return {
+        "status": "completed" if firstboot_wizard.completed else "not_run",
+        "responses": responses,
+    }
+
 
 @app.post("/v1/evolution/approve")
 def approve_evolution(proposal_id: str) -> dict:
@@ -607,6 +683,15 @@ class ModelSwitchPayload(BaseModel):
 
 class ModelPreflightPayload(BaseModel):
     model_name: str = Field(min_length=1, max_length=255)
+
+
+class ChatMessagePayload(BaseModel):
+    message: str = Field(min_length=1, max_length=10000)
+    session_id: Optional[str] = None
+
+
+class FirstBootCheckPayload(BaseModel):
+    force: bool = False
 
 
 @app.get("/v1/update/status")
