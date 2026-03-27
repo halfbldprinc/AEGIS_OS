@@ -3,7 +3,9 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+
+from ..hardware import detect_hardware_profile
 
 try:
     from huggingface_hub import hf_hub_download, snapshot_download
@@ -55,6 +57,47 @@ class ModelManager:
         if active:
             return active.get("path")
         return None
+
+    def get_model(self, model_name: str) -> Optional[Dict[str, Optional[str]]]:
+        for item in self.registry:
+            if item.get("name") == model_name:
+                return dict(item)
+        return None
+
+    @staticmethod
+    def _estimate_min_ram_gb(size_bytes: int) -> int:
+        # Conservative heuristic: quantized runtime memory is often around 2x-3x model size.
+        size_gb = max(1, int(size_bytes / (1024**3)))
+        return max(4, size_gb * 3)
+
+    def preflight_switch(self, model_name: str) -> Dict[str, Any]:
+        item = self.get_model(model_name)
+        if item is None:
+            raise KeyError(f"Model {model_name} not found")
+
+        size_bytes = int(item.get("size_bytes") or 0)
+        min_ram_gb = self._estimate_min_ram_gb(size_bytes)
+        hw = detect_hardware_profile()
+        fits_ram = hw.total_ram_gb >= min_ram_gb
+
+        checks = {
+            "exists": Path(str(item.get("path", ""))).exists(),
+            "fits_ram": fits_ram,
+        }
+        warnings = []
+        if not fits_ram:
+            warnings.append(
+                f"Model likely requires >= {min_ram_gb}GB RAM, system has {hw.total_ram_gb}GB"
+            )
+
+        return {
+            "model": item,
+            "estimated_min_ram_gb": min_ram_gb,
+            "hardware": hw.__dict__,
+            "checks": checks,
+            "warnings": warnings,
+            "can_switch": all(checks.values()),
+        }
 
     def download_model(self, hf_repo: str, filename: str, target_dir: str | Path) -> str:
         if snapshot_download is None and hf_hub_download is None:

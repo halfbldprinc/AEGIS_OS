@@ -13,6 +13,7 @@ from .ai_execution import AIExecutionEngine
 from .desktop_integration import DesktopIntegrationManager
 from .evolution import EvolutionManager
 from .guardian import Guardian
+from .llm.model_manager import ModelManager
 from .llm.runtime import LLMUnavailableError
 from .memory import MemoryStore
 from .orchestrator import Plan
@@ -556,6 +557,7 @@ evolution_manager = EvolutionManager()
 
 update_manager = UpdateManager()
 desktop_integration_manager = DesktopIntegrationManager()
+model_manager = ModelManager(os.getenv("AEGIS_MODELS_DIR", "~/.aegis/models"))
 
 
 class UpdatePayload(BaseModel):
@@ -594,6 +596,15 @@ class AIExecutePayload(BaseModel):
     scope: Optional[str] = None
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
     max_tokens: int = Field(default=512, ge=1, le=4096)
+
+
+class ModelSwitchPayload(BaseModel):
+    model_name: str = Field(min_length=1, max_length=255)
+    force: bool = False
+
+
+class ModelPreflightPayload(BaseModel):
+    model_name: str = Field(min_length=1, max_length=255)
 
 
 @app.get("/v1/update/status")
@@ -685,6 +696,50 @@ def simulate_package_install(payload: PackageSimulatePayload) -> dict:
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error or "package simulation failed")
     return result.data or {}
+
+
+@app.get("/v1/models")
+def list_models() -> dict:
+    models = model_manager.list_models()
+    active = model_manager.get_active_model()
+    return {"models": models, "active_model": active}
+
+
+@app.post("/v1/models/preflight-switch")
+def preflight_model_switch(payload: ModelPreflightPayload) -> dict:
+    try:
+        return model_manager.preflight_switch(payload.model_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/v1/models/switch")
+def switch_model(payload: ModelSwitchPayload) -> dict:
+    daemon_ref = _get_daemon()
+    try:
+        preflight = model_manager.preflight_switch(payload.model_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    if not preflight.get("can_switch") and not payload.force:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Preflight checks failed; use force=true to override",
+                "preflight": preflight,
+            },
+        )
+
+    model_path = model_manager.set_active(payload.model_name)
+    switched = daemon_ref.llm_runtime.swap_model(model_path)
+    if not switched:
+        raise HTTPException(status_code=503, detail="Runtime failed to load selected model")
+
+    return {
+        "status": "switched",
+        "active_model": model_manager.get_active_model(),
+        "preflight": preflight,
+    }
 
 
 @app.get("/v1/ai/runtime-health")

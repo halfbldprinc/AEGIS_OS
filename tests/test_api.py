@@ -1,7 +1,9 @@
+import aegis.api as api_module
 from fastapi.testclient import TestClient
 
 from aegis.api import app
 from aegis.daemon import AegisDaemon
+from aegis.llm.model_manager import ModelManager
 
 client = TestClient(app)
 
@@ -407,4 +409,65 @@ def test_conversation_history_rejects_empty_session_id():
 def test_process_endpoint_rejects_oversized_input():
     response = client.post("/v1/process", json={"text": "x" * 60000})
     assert response.status_code == 422
+
+
+def test_model_preflight_endpoint(tmp_path, monkeypatch):
+    model_path = tmp_path / "tiny.gguf"
+    model_path.write_bytes(b"ok")
+
+    manager = ModelManager(models_dir=tmp_path)
+    manager.registry = [
+        {
+            "name": "tiny.gguf",
+            "path": str(model_path),
+            "sha256": "x",
+            "size_bytes": 1024,
+            "quant_type": "gguf",
+            "active": False,
+            "version": None,
+            "created_at": None,
+            "benchmark_scores": {},
+            "lineage": [],
+        }
+    ]
+    manager._save_registry()
+    monkeypatch.setattr(api_module, "model_manager", manager)
+
+    response = client.post("/v1/models/preflight-switch", json={"model_name": "tiny.gguf"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["checks"]["exists"] is True
+    assert payload["can_switch"] is True
+
+
+def test_model_switch_endpoint(tmp_path, monkeypatch):
+    model_path = tmp_path / "switch.gguf"
+    model_path.write_bytes(b"ok")
+
+    manager = ModelManager(models_dir=tmp_path)
+    manager.registry = [
+        {
+            "name": "switch.gguf",
+            "path": str(model_path),
+            "sha256": "x",
+            "size_bytes": 1024,
+            "quant_type": "gguf",
+            "active": False,
+            "version": None,
+            "created_at": None,
+            "benchmark_scores": {},
+            "lineage": [],
+        }
+    ]
+    manager._save_registry()
+    monkeypatch.setattr(api_module, "model_manager", manager)
+
+    app.state.daemon = AegisDaemon()
+    monkeypatch.setattr(app.state.daemon.llm_runtime, "swap_model", lambda _path: True)
+
+    response = client.post("/v1/models/switch", json={"model_name": "switch.gguf"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "switched"
+    assert payload["active_model"]["name"] == "switch.gguf"
 
