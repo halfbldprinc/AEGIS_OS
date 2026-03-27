@@ -1,5 +1,4 @@
 from pathlib import Path
-import pytest
 
 from aegis.state import SystemState
 from aegis.storage import FileStateStorage, InMemoryStateStorage

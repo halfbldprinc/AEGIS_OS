@@ -164,7 +164,7 @@ def test_daemon_conversation_integration():
     session_id = daemon_ref.voice_session_id
     
     # Execute a voice command
-    result = daemon_ref.process_voice_text("aegis echo hello world")
+    daemon_ref.process_voice_text("aegis echo hello world")
     
     # Verify it recorded the turn
     history = daemon_ref.conversation_manager.get_session_history(session_id)
