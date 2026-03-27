@@ -275,6 +275,31 @@ def test_default_policy_allowlist_allows_confirmed_override():
     assert decision.reason == "allowed_by_confirmation"
 
 
+def test_default_policy_profile_blocks_high_risk_action():
+    policy = DefaultExecutionPolicy(profile="strict")
+    decision = policy.evaluate(
+        skill_name="package_manager",
+        action="install",
+        params={"confirmed": False},
+        trust_ledger=TrustLedger(),
+    )
+
+    assert not decision.allowed
+    assert "policy profile" in decision.reason
+
+
+def test_default_policy_profile_allows_confirmed_override():
+    policy = DefaultExecutionPolicy(profile="strict")
+    decision = policy.evaluate(
+        skill_name="package_manager",
+        action="install",
+        params={"confirmed": True},
+        trust_ledger=TrustLedger(),
+    )
+
+    assert decision.allowed
+
+
 def test_container_runner_sbom_and_vuln_scan():
     from aegis.orchestrator.container_runner import ContainerizedRunner
 

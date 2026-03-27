@@ -14,6 +14,7 @@ from .evolution import EvolutionManager
 from .guardian import Guardian
 from .memory import MemoryStore
 from .orchestrator import Plan
+from .orchestrator.policy import DefaultExecutionPolicy
 from .security import SecurityManager
 from .update_manager import UpdateManager
 from .logging import configure_logging
@@ -573,6 +574,10 @@ class DesktopHooksPayload(BaseModel):
     dry_run: bool = False
 
 
+class PolicyProfilePayload(BaseModel):
+    profile: str = Field(min_length=1, max_length=32)
+
+
 @app.get("/v1/update/status")
 def get_update_status() -> dict:
     return update_manager.status()
@@ -613,6 +618,25 @@ def desktop_integration_status(home_dir: Optional[str] = None) -> dict:
 @app.post("/v1/desktop/integration/install-user-hooks")
 def install_desktop_user_hooks(payload: DesktopHooksPayload) -> dict:
     return desktop_integration_manager.install_user_hooks(home_dir=payload.home_dir, dry_run=payload.dry_run)
+
+
+@app.get("/v1/policy/profile")
+def get_policy_profile() -> dict:
+    daemon_ref = _get_daemon()
+    policy = daemon_ref.orchestrator.policy
+    if not isinstance(policy, DefaultExecutionPolicy):
+        raise HTTPException(status_code=400, detail="Active policy does not support profile management")
+    return policy.get_profile()
+
+
+@app.post("/v1/policy/profile")
+def set_policy_profile(payload: PolicyProfilePayload) -> dict:
+    daemon_ref = _get_daemon()
+    policy = daemon_ref.orchestrator.policy
+    if not isinstance(policy, DefaultExecutionPolicy):
+        raise HTTPException(status_code=400, detail="Active policy does not support profile management")
+    profile = policy.set_profile(payload.profile)
+    return {"status": "updated", "profile": profile, "details": policy.get_profile()}
 
 
 @app.get("/v1/security/status")

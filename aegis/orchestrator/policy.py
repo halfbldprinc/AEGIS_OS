@@ -28,6 +28,7 @@ class DefaultExecutionPolicy:
         self,
         enforce_action_allowlist: bool | None = None,
         allowlist: Mapping[str, Iterable[str]] | None = None,
+        profile: str | None = None,
     ):
         if enforce_action_allowlist is None:
             enforce_action_allowlist = os.getenv("AEGIS_ENFORCE_ACTION_ALLOWLIST", "0").lower() in {
@@ -38,6 +39,46 @@ class DefaultExecutionPolicy:
             }
         self.enforce_action_allowlist = enforce_action_allowlist
         self.allowlist = self._load_allowlist(allowlist)
+        self.profile = self._normalize_profile(profile or os.getenv("AEGIS_POLICY_PROFILE", "balanced"))
+
+    PROFILE_DENY_RULES: Dict[str, Dict[str, set[str]]] = {
+        "open": {},
+        "balanced": {
+            "shell": {"run"},
+            "package_manager": {"remove", "upgrade"},
+        },
+        "strict": {
+            "shell": {"run"},
+            "os_control": {"launch", "close", "focus", "clipboard_set"},
+            "settings": {"volume", "brightness", "dnd", "network"},
+            "package_manager": {"install", "remove", "upgrade"},
+        },
+    }
+
+    @classmethod
+    def _normalize_profile(cls, profile: str) -> str:
+        value = (profile or "balanced").strip().lower()
+        if value not in cls.PROFILE_DENY_RULES:
+            return "balanced"
+        return value
+
+    def set_profile(self, profile: str) -> str:
+        self.profile = self._normalize_profile(profile)
+        return self.profile
+
+    def get_profile(self) -> Dict[str, Any]:
+        rules = self.PROFILE_DENY_RULES.get(self.profile, {})
+        serialized_rules = {skill: sorted(actions) for skill, actions in rules.items()}
+        return {
+            "profile": self.profile,
+            "deny_rules": serialized_rules,
+            "allowlist_enforced": self.enforce_action_allowlist,
+        }
+
+    def _is_denied_by_profile(self, skill_name: str, action: str) -> bool:
+        rules = self.PROFILE_DENY_RULES.get(self.profile, {})
+        denied_actions = rules.get(skill_name, set())
+        return action in denied_actions or "all" in denied_actions
 
     @staticmethod
     def _load_allowlist(allowlist: Mapping[str, Iterable[str]] | None) -> Dict[str, set[str]]:
@@ -71,6 +112,12 @@ class DefaultExecutionPolicy:
         history_exists = skill_name in trust_ledger.records
         if history_exists and not trust_ledger.is_unlocked(skill_name):
             return PolicyDecision(False, f"skill '{skill_name}' blocked by trust ledger")
+
+        if self._is_denied_by_profile(skill_name, action) and not params.get("confirmed", False):
+            return PolicyDecision(
+                False,
+                f"skill '{skill_name}' action '{action}' blocked by policy profile '{self.profile}'",
+            )
 
         if self.enforce_action_allowlist:
             if params.get("confirmed", False):

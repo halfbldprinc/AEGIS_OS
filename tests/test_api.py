@@ -309,6 +309,20 @@ def test_desktop_integration_endpoints(tmp_path):
     assert planned["status"] == "planned"
 
 
+def test_policy_profile_endpoints():
+    app.state.daemon = AegisDaemon()
+
+    response = client.get("/v1/policy/profile")
+    assert response.status_code == 200
+    assert response.json()["profile"] in {"strict", "balanced", "open"}
+
+    response = client.post("/v1/policy/profile", json={"profile": "strict"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "updated"
+    assert payload["profile"] == "strict"
+
+
 def test_sync_connect_endpoint_rejects_invalid_port():
     response = client.post("/v1/sync/connect", json={"peer_id": "p1", "address": "127.0.0.1", "port": 0})
     assert response.status_code == 422
