@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=AegisOS Text Input Fallback
+Comment=Always-on-top AegisOS text command input when microphone is unavailable
+Exec=/opt/aegisos/.venv/bin/python -m aegis.cli agent text-fallback --poll-interval 1.0
+Terminal=false
+X-GNOME-Autostart-enabled=true
+NoDisplay=false

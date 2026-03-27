@@ -1,0 +1,128 @@
+{
+  "profiles": [
+    {
+      "profile_id": "small",
+      "label": "DeepSeek 1.5B (fastest)",
+      "provider": "deepseek",
+      "model_size": "1.5b",
+      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
+      "filename": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+      "min_ram_gb": 8,
+      "min_cpu_cores": 4,
+      "min_storage_gb": 3,
+      "min_rom_gb": 3,
+      "requires_gpu": false,
+      "min_vram_gb": 0,
+      "parameter_count": "1.5B",
+      "quantization": "Q4_K_M",
+      "description": "Low memory footprint and fast startup."
+    },
+    {
+      "profile_id": "medium",
+      "label": "DeepSeek 7B (balanced)",
+      "provider": "deepseek",
+      "model_size": "7b",
+      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
+      "filename": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+      "min_ram_gb": 16,
+      "min_cpu_cores": 8,
+      "min_storage_gb": 6,
+      "min_rom_gb": 6,
+      "requires_gpu": false,
+      "min_vram_gb": 0,
+      "parameter_count": "7B",
+      "quantization": "Q4_K_M",
+      "description": "Balanced quality and latency for daily use."
+    },
+    {
+      "profile_id": "large",
+      "label": "DeepSeek 14B (best quality)",
+      "provider": "deepseek",
+      "model_size": "14b",
+      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+      "filename": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+      "min_ram_gb": 32,
+      "min_cpu_cores": 12,
+      "min_storage_gb": 10,
+      "min_rom_gb": 10,
+      "requires_gpu": true,
+      "min_vram_gb": 10,
+      "parameter_count": "14B",
+      "quantization": "Q4_K_M",
+      "description": "Higher quality with larger hardware requirements."
+    }
+  ],
+  "permission_profiles": [
+    {
+      "profile_id": "strict",
+      "label": "Strict",
+      "description": "Safer defaults, no destructive permissions pre-granted.",
+      "grants": [
+        {"skill_name": "echo", "action": "echo"},
+        {"skill_name": "web_search", "action": "search"},
+        {"skill_name": "http", "action": "request"},
+        {"skill_name": "json_transform", "action": "all"},
+        {"skill_name": "browser", "action": "fetch_text"},
+        {"skill_name": "browser", "action": "extract_links"},
+        {"skill_name": "llm", "action": "reason"}
+      ]
+    },
+    {
+      "profile_id": "prompt_once",
+      "label": "Prompt Once (recommended)",
+      "description": "Prompts on first sensitive task execution, then remembers approval per skill/action.",
+      "grants": [
+        {"skill_name": "echo", "action": "all"},
+        {"skill_name": "llm", "action": "all"},
+        {"skill_name": "web_search", "action": "all"},
+        {"skill_name": "http", "action": "request"},
+        {"skill_name": "json_transform", "action": "all"},
+        {"skill_name": "browser", "action": "all"},
+        {"skill_name": "calendar", "action": "read"},
+        {"skill_name": "reminder", "action": "read"}
+      ]
+    },
+    {
+      "profile_id": "balanced",
+      "label": "Balanced",
+      "description": "Everyday assistant actions enabled, destructive actions still gated.",
+      "grants": [
+        {"skill_name": "echo", "action": "all"},
+        {"skill_name": "llm", "action": "all"},
+        {"skill_name": "web_search", "action": "all"},
+        {"skill_name": "http", "action": "request"},
+        {"skill_name": "json_transform", "action": "all"},
+        {"skill_name": "browser", "action": "all"},
+        {"skill_name": "calendar", "action": "all"},
+        {"skill_name": "reminder", "action": "all"},
+        {"skill_name": "email", "action": "draft"},
+        {"skill_name": "file", "action": "read"},
+        {"skill_name": "file", "action": "search"},
+        {"skill_name": "file_batch", "action": "batch"},
+        {"skill_name": "shell", "action": "run", "duration_hours": 4}
+      ]
+    },
+    {
+      "profile_id": "open",
+      "label": "Open",
+      "description": "Broad local automation enabled. Recommended only for trusted personal devices.",
+      "grants": [
+        {"skill_name": "echo", "action": "all"},
+        {"skill_name": "llm", "action": "all"},
+        {"skill_name": "web_search", "action": "all"},
+        {"skill_name": "http", "action": "request"},
+        {"skill_name": "json_transform", "action": "all"},
+        {"skill_name": "browser", "action": "all"},
+        {"skill_name": "calendar", "action": "all"},
+        {"skill_name": "reminder", "action": "all"},
+        {"skill_name": "email", "action": "all"},
+        {"skill_name": "file", "action": "all"},
+        {"skill_name": "file_batch", "action": "batch"},
+        {"skill_name": "shell", "action": "run"},
+        {"skill_name": "os_control", "action": "all"},
+        {"skill_name": "settings", "action": "all"},
+        {"skill_name": "container", "action": "all"}
+      ]
+    }
+  ]
+}

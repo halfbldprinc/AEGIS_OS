@@ -1,0 +1,28 @@
+[Unit]
+Description=AegisOS Interactive Onboarding Wizard
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/var/lib/aegis/.firstboot_done
+
+[Service]
+Type=oneshot
+StandardInput=tty-force
+StandardOutput=journal+console
+TTYPath=/dev/tty1
+EnvironmentFile=-/etc/aegis/install-selections.env
+ExecStart=/opt/aegisos/.venv/bin/python -m aegis.firstboot --models-dir /var/lib/aegis/models --catalog /etc/aegis/model_catalog.json --interactive --interactive-permissions --stamp /var/lib/aegis/.firstboot_done
+RemainAfterExit=true
+TimeoutStartSec=0
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/aegis /etc/aegis
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

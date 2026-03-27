@@ -1,0 +1,32 @@
+[project]
+name = "aegisos"
+version = "0.1.0"
+description = "Linux distro integrated local AI assistant runtime"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+
+dependencies = [
+    "python-dateutil>=2.8",
+    "attrs>=23.1",
+    "fastapi>=0.109"
+]
+
+[project.optional-dependencies]
+api = ["uvicorn>=0.24"]
+llm = ["huggingface-hub>=0.23"]
+
+[project.scripts]
+aegis = "aegis.cli:main"
+
+[tool.lint]
+line-length = 120
+select = ["E", "F", "W", "I", "D", "R", "S", "Q"]
+ignore = ["E501"]
+
+[tool.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

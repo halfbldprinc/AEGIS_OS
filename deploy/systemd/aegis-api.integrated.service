@@ -1,0 +1,39 @@
+[Unit]
+Description=AegisOS Integrated Local API
+After=network.target aegis-onboarding.service
+Requires=aegis-onboarding.service
+
+[Service]
+Type=simple
+User=aegis
+Group=aegis
+WorkingDirectory=/opt/aegisos
+ExecStart=/opt/aegisos/.venv/bin/python -m aegis.cli api --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+Environment=AEGIS_ALLOW_UNSIGNED_BUILTINS=0
+Environment=AEGIS_AUTO_GRANT_SKILL_PERMISSIONS=0
+EnvironmentFile=-/etc/aegis/install-selections.env
+EnvironmentFile=-/etc/aegis/runtime.env
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectClock=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/aegis
+
+[Install]
+WantedBy=multi-user.target

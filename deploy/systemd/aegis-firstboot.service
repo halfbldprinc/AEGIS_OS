@@ -1,0 +1,13 @@
+[Unit]
+Description=AegisOS First Boot Model Provisioning
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/var/lib/aegis/.firstboot_done
+
+[Service]
+Type=oneshot
+ExecStart=/opt/aegisos/.venv/bin/python -m aegis.firstboot --models-dir /var/lib/aegis/models --catalog /etc/aegis/model_catalog.json --stamp /var/lib/aegis/.firstboot_done
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

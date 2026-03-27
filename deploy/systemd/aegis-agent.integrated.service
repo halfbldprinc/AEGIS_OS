@@ -1,0 +1,39 @@
+[Unit]
+Description=AegisOS Integrated Voice Agent
+After=network.target aegis-onboarding.service aegis-api.service
+Requires=aegis-onboarding.service aegis-api.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=aegis
+Group=aegis
+WorkingDirectory=/opt/aegisos
+ExecStart=/opt/aegisos/.venv/bin/python -m aegis.cli agent run --poll-interval 0.2
+Restart=always
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+Environment=AEGIS_ALLOW_UNSIGNED_BUILTINS=0
+Environment=AEGIS_AUTO_GRANT_SKILL_PERMISSIONS=0
+EnvironmentFile=-/etc/aegis/install-selections.env
+EnvironmentFile=-/etc/aegis/runtime.env
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectClock=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/aegis
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+{
+  "name": "aegisos-build-tools",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Build helpers for AegisOS distro integration",
+  "scripts": {
+    "iso": "bash ./scripts/build_iso_debian_live.sh",
+    "iso:bookworm": "DISTRO_CODENAME=bookworm bash ./scripts/build_iso_debian_live.sh",
+    "iso:validate": "bash ./scripts/validate_iso_evidence.sh",
+    "iso:validate:build": "bash ./scripts/validate_iso_evidence.sh --build",
+    "iso:clean": "rm -rf ./build/debian-live-aegis",
+    "test:reliability:soak": "bash ./scripts/run_soak_test.sh",
+    "test:reliability:chaos": "bash ./scripts/run_chaos_smoke.sh",
+    "ops:eval-harness": "bash ./scripts/run_orchestrator_eval_harness.sh",
+    "pkg:deb": "bash ./packaging/deb/build_deb.sh",
+    "pkg:rpm": "bash ./packaging/rpm/build_rpm.sh"
+  }
+}
