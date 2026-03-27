@@ -1,5 +1,7 @@
+import json
+import os
 from dataclasses import dataclass
-from typing import Protocol, Dict, Any
+from typing import Protocol, Dict, Any, Mapping, Iterable
 
 from ..trust_ledger import TrustLedger
 
@@ -22,10 +24,59 @@ class DefaultExecutionPolicy:
       - Otherwise allow
     """
 
+    def __init__(
+        self,
+        enforce_action_allowlist: bool | None = None,
+        allowlist: Mapping[str, Iterable[str]] | None = None,
+    ):
+        if enforce_action_allowlist is None:
+            enforce_action_allowlist = os.getenv("AEGIS_ENFORCE_ACTION_ALLOWLIST", "0").lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+        self.enforce_action_allowlist = enforce_action_allowlist
+        self.allowlist = self._load_allowlist(allowlist)
+
+    @staticmethod
+    def _load_allowlist(allowlist: Mapping[str, Iterable[str]] | None) -> Dict[str, set[str]]:
+        if allowlist is None:
+            raw = os.getenv("AEGIS_ACTION_ALLOWLIST", "").strip()
+            if not raw:
+                return {}
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                return {}
+            if not isinstance(parsed, dict):
+                return {}
+            allowlist = parsed
+
+        out: Dict[str, set[str]] = {}
+        for skill, actions in allowlist.items():
+            if isinstance(actions, str):
+                out[str(skill)] = {actions}
+                continue
+            out[str(skill)] = {str(action) for action in actions}
+        return out
+
+    def _is_allowed_by_allowlist(self, skill_name: str, action: str) -> bool:
+        allowed_actions = self.allowlist.get(skill_name)
+        if not allowed_actions:
+            return False
+        return action in allowed_actions or "all" in allowed_actions
+
     def evaluate(self, skill_name: str, action: str, params: Dict[str, Any], trust_ledger: TrustLedger) -> PolicyDecision:
         history_exists = skill_name in trust_ledger.records
         if history_exists and not trust_ledger.is_unlocked(skill_name):
             return PolicyDecision(False, f"skill '{skill_name}' blocked by trust ledger")
+
+        if self.enforce_action_allowlist:
+            if params.get("confirmed", False):
+                return PolicyDecision(True, "allowed_by_confirmation")
+            if not self._is_allowed_by_allowlist(skill_name, action):
+                return PolicyDecision(False, f"skill '{skill_name}' action '{action}' blocked by allowlist")
 
         return PolicyDecision(True, "allowed")
 

@@ -1,10 +1,12 @@
 import pytest
 
 from aegis.orchestrator import Orchestrator, Plan
+from aegis.orchestrator.policy import DefaultExecutionPolicy
 from aegis.result import SkillResult
 from aegis.skill import Skill
 from aegis.skills.action_schema import ActionSchema, ParamSpec
 from aegis.skills.echo_skill import EchoSkill
+from aegis.trust_ledger import TrustLedger
 
 
 def test_orchestrator_with_echo_skill():
@@ -239,6 +241,38 @@ def test_orchestrator_cost_budget_policy():
 
     result_plan = orchestrator.execute_plan(plan, allow_failure=True)
     assert result_plan.status == "FAILED" or result_plan.steps[0].status == "DENIED"
+
+
+def test_default_policy_allowlist_blocks_unlisted_action():
+    policy = DefaultExecutionPolicy(
+        enforce_action_allowlist=True,
+        allowlist={"echo": ["echo"]},
+    )
+    decision = policy.evaluate(
+        skill_name="shell",
+        action="run",
+        params={},
+        trust_ledger=TrustLedger(),
+    )
+
+    assert not decision.allowed
+    assert "allowlist" in decision.reason
+
+
+def test_default_policy_allowlist_allows_confirmed_override():
+    policy = DefaultExecutionPolicy(
+        enforce_action_allowlist=True,
+        allowlist={"echo": ["echo"]},
+    )
+    decision = policy.evaluate(
+        skill_name="shell",
+        action="run",
+        params={"confirmed": True},
+        trust_ledger=TrustLedger(),
+    )
+
+    assert decision.allowed
+    assert decision.reason == "allowed_by_confirmation"
 
 
 def test_container_runner_sbom_and_vuln_scan():
