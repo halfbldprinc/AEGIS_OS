@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from .hardware import HardwareProfile, detect_hardware_profile
 from .guardian import Guardian
 from .llm.model_discovery import discover_model_profiles
 from .llm.model_manager import ModelManager
@@ -224,6 +225,7 @@ def choose_profile(
     interactive: bool,
     selected_provider: Optional[str] = None,
     selected_model_size: Optional[str] = None,
+    auto_profile_by_hardware: Optional[bool] = None,
 ) -> ModelProfile:
     if not profiles:
         raise ValueError("No model profiles available")
@@ -260,7 +262,50 @@ def choose_profile(
         provider = _interactive_provider_select(profiles)
         return _interactive_size_select(profiles, provider)
 
+    if auto_profile_by_hardware is None:
+        auto_profile_by_hardware = os.getenv("AEGIS_AUTO_PROFILE_BY_HARDWARE", "0").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+    if auto_profile_by_hardware:
+        profile = _choose_profile_for_hardware(profiles, detect_hardware_profile())
+        if profile:
+            return profile
+
     return _default_profile(profiles)
+
+
+def _choose_profile_for_hardware(profiles: List[ModelProfile], hardware: HardwareProfile) -> Optional[ModelProfile]:
+    eligible: List[ModelProfile] = []
+    for profile in profiles:
+        if hardware.total_ram_gb < profile.min_ram_gb:
+            continue
+        if hardware.cpu_cores < profile.min_cpu_cores:
+            continue
+        if hardware.total_storage_gb < profile.min_storage_gb or hardware.total_storage_gb < profile.min_rom_gb:
+            continue
+        if profile.requires_gpu and not hardware.has_gpu:
+            continue
+        if profile.requires_gpu and hardware.vram_gb < profile.min_vram_gb:
+            continue
+        eligible.append(profile)
+
+    if not eligible:
+        return None
+
+    return sorted(
+        eligible,
+        key=lambda p: (
+            p.min_ram_gb,
+            p.min_cpu_cores,
+            p.min_storage_gb,
+            p.min_vram_gb,
+        ),
+        reverse=True,
+    )[0]
 
 
 def _normalize_choice(value: Optional[str]) -> str:
@@ -482,6 +527,7 @@ def run_firstboot(
     selected_provider: Optional[str] = None,
     selected_model_size: Optional[str] = None,
     selected_permission_profile: Optional[str] = None,
+    auto_profile_by_hardware: Optional[bool] = None,
     interactive: bool = False,
     interactive_permissions: bool = False,
     guardian_db: Optional[str] = None,
@@ -496,6 +542,7 @@ def run_firstboot(
         interactive=interactive,
         selected_provider=selected_provider,
         selected_model_size=selected_model_size,
+        auto_profile_by_hardware=auto_profile_by_hardware,
     )
     chosen_perms = choose_permission_profile(
         permission_profiles,
@@ -547,6 +594,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--provider", default=None)
     parser.add_argument("--model-size", default=None)
     parser.add_argument("--permission-profile", default=None)
+    parser.add_argument("--auto-profile-by-hardware", action="store_true")
     parser.add_argument("--interactive", action="store_true")
     parser.add_argument("--interactive-permissions", action="store_true")
     parser.add_argument("--guardian-db", default=None)
@@ -560,6 +608,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         selected_provider=args.provider,
         selected_model_size=args.model_size,
         selected_permission_profile=args.permission_profile,
+        auto_profile_by_hardware=args.auto_profile_by_hardware,
         interactive=args.interactive,
         interactive_permissions=args.interactive_permissions,
         guardian_db=args.guardian_db,

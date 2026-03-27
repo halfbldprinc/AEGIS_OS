@@ -6,12 +6,14 @@ import pytest
 from aegis.firstboot import (
     DEFAULT_PERMISSION_PROFILES,
     ModelProfile,
+    _choose_profile_for_hardware,
     choose_permission_profile,
     choose_profile,
     format_hardware_info,
     load_profiles,
     run_firstboot,
 )
+from aegis.hardware import HardwareProfile
 
 
 @pytest.fixture(autouse=True)
@@ -112,6 +114,64 @@ def test_choose_profile_from_env_provider_and_size(monkeypatch):
 
     chosen = choose_profile(profiles, selected_profile=None, interactive=False)
     assert chosen.profile_id == "medium"
+
+
+def test_choose_profile_for_hardware_prefers_largest_eligible_profile():
+    profiles = [
+        ModelProfile("small", "S", "r1", "f1", 8, "d1", min_cpu_cores=4, min_storage_gb=3),
+        ModelProfile("medium", "M", "r2", "f2", 16, "d2", min_cpu_cores=8, min_storage_gb=6),
+        ModelProfile(
+            "large",
+            "L",
+            "r3",
+            "f3",
+            32,
+            "d3",
+            min_cpu_cores=12,
+            min_storage_gb=10,
+            requires_gpu=True,
+            min_vram_gb=10,
+        ),
+    ]
+    hardware = HardwareProfile(
+        cpu_cores=16,
+        total_ram_gb=64,
+        total_storage_gb=512,
+        has_gpu=True,
+        gpu_vendor="nvidia",
+        vram_gb=16,
+    )
+
+    chosen = _choose_profile_for_hardware(profiles, hardware)
+    assert chosen is not None
+    assert chosen.profile_id == "large"
+
+
+def test_choose_profile_auto_hardware_mode(monkeypatch):
+    profiles = [
+        ModelProfile("small", "S", "r1", "f1", 8, "d1", min_cpu_cores=4, min_storage_gb=3),
+        ModelProfile("medium", "M", "r2", "f2", 16, "d2", min_cpu_cores=8, min_storage_gb=6),
+    ]
+
+    monkeypatch.setattr(
+        "aegis.firstboot.detect_hardware_profile",
+        lambda: HardwareProfile(
+            cpu_cores=4,
+            total_ram_gb=8,
+            total_storage_gb=128,
+            has_gpu=False,
+            gpu_vendor="none",
+            vram_gb=0,
+        ),
+    )
+
+    chosen = choose_profile(
+        profiles,
+        selected_profile=None,
+        interactive=False,
+        auto_profile_by_hardware=True,
+    )
+    assert chosen.profile_id == "small"
 
 
 def test_run_firstboot_downloads_and_sets_active(monkeypatch, tmp_path):
