@@ -53,6 +53,42 @@ def test_memory_search_endpoint():
     assert response.status_code == 200
 
 
+def test_memory_scope_api_roundtrip():
+    response = client.post(
+        '/v1/memory/upsert',
+        json={
+            'text': 'Temporary contextual note for this session',
+            'metadata': {'topic': 'session'},
+            'scope': 'short_term',
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['scope'] == 'short_term'
+    entry_id = payload['id']
+
+    response = client.get('/v1/memory/search', params={'q': 'contextual note', 'scope': 'short_term'})
+    assert response.status_code == 200
+    data = response.json()
+    assert data['scope'] == 'short_term'
+    assert any(item['id'] == entry_id for item in data['results'])
+    assert all(item['scope'] == 'short_term' for item in data['results'])
+
+
+def test_memory_scope_api_rejects_invalid_scope():
+    response = client.post(
+        '/v1/memory/upsert',
+        json={
+            'text': 'invalid scope probe',
+            'scope': 'ephemeral',
+        },
+    )
+    assert response.status_code == 422
+
+    response = client.get('/v1/memory/search', params={'q': 'probe', 'scope': 'ephemeral'})
+    assert response.status_code == 422
+
+
 def test_guardian_endpoints():
     response = client.post('/v1/guardian/grant', json={'skill_name': 'echo', 'action': 'echo', 'duration_hours': 1})
     assert response.status_code == 200

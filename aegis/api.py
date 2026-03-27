@@ -23,6 +23,21 @@ configure_logging()
 daemon = AegisDaemon()
 memory_store = MemoryStore()
 
+
+def _validate_memory_scope(scope: Optional[str]) -> Optional[str]:
+    if scope is None:
+        return None
+    normalized = scope.strip().lower()
+    if normalized not in MemoryStore.VALID_SCOPES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Invalid memory scope '{scope}'. "
+                f"Expected one of: {', '.join(sorted(MemoryStore.VALID_SCOPES))}"
+            ),
+        )
+    return normalized
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager to start and shutdown the daemon."""
@@ -248,23 +263,31 @@ def get_trust_snapshot() -> dict:
 
 
 @app.get("/v1/memory/search")
-def search_memory(q: str = Query(..., min_length=1), top_k: int = Query(5, ge=1, le=50)) -> dict:
-    results = memory_store.search(q, top_k=top_k)
-    return {"query": q, "results": results}
+def search_memory(
+    q: str = Query(..., min_length=1),
+    top_k: int = Query(5, ge=1, le=50),
+    scope: Optional[str] = Query(default=None),
+) -> dict:
+    normalized_scope = _validate_memory_scope(scope)
+    results = memory_store.search(q, top_k=top_k, scope=normalized_scope)
+    return {"query": q, "scope": normalized_scope or "all", "results": results}
 
 
 class MemoryUpsertPayload(BaseModel):
     text: str = Field(min_length=1, max_length=50000)
     metadata: Optional[Dict[str, Any]] = None
+    scope: str = Field(default="long_term", min_length=1, max_length=32)
 
 
 @app.post("/v1/memory/upsert")
 def upsert_memory(payload: MemoryUpsertPayload) -> dict:
-    entry = memory_store.upsert(payload.text, payload.metadata or {})
+    scope = _validate_memory_scope(payload.scope)
+    entry = memory_store.upsert(payload.text, payload.metadata or {}, scope=scope or "long_term")
     return {
         "id": entry.id,
         "text": entry.text,
         "metadata": entry.metadata,
+        "scope": entry.scope,
         "created_at": datetime.fromtimestamp(entry.created_at).isoformat(),
     }
 
@@ -286,6 +309,7 @@ def get_memory(entry_id: str) -> dict:
         "id": entry.id,
         "text": entry.text,
         "metadata": entry.metadata,
+        "scope": entry.scope,
         "created_at": datetime.fromtimestamp(entry.created_at).isoformat(),
     }
 

@@ -34,6 +34,7 @@ class MemoryEntry:
     metadata: Dict[str, Any]
     created_at: float
     embedding: List[float]
+    scope: str = "long_term"
 
 
 class EmbeddingModel:
@@ -86,6 +87,8 @@ class EmbeddingModel:
 
 
 class MemoryStore:
+    VALID_SCOPES = {"short_term", "long_term", "system"}
+
     def __init__(self, db_path: str = "~/.aegis/memory.db"):
         self.db_path = Path(db_path).expanduser()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -102,12 +105,29 @@ class MemoryStore:
                     text TEXT NOT NULL,
                     metadata TEXT,
                     created_at REAL NOT NULL,
-                    embedding TEXT NOT NULL
+                    embedding TEXT NOT NULL,
+                    scope TEXT NOT NULL DEFAULT 'long_term'
                 )
                 """
             )
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(memory)").fetchall()}
+            if "scope" not in columns:
+                conn.execute("ALTER TABLE memory ADD COLUMN scope TEXT NOT NULL DEFAULT 'long_term'")
 
-    def upsert(self, text: str, metadata: Optional[Dict[str, Any]] = None, entry_id: Optional[str] = None) -> MemoryEntry:
+    @classmethod
+    def _normalize_scope(cls, scope: Optional[str]) -> str:
+        value = (scope or "long_term").strip().lower()
+        if value not in cls.VALID_SCOPES:
+            return "long_term"
+        return value
+
+    def upsert(
+        self,
+        text: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        entry_id: Optional[str] = None,
+        scope: str = "long_term",
+    ) -> MemoryEntry:
         if metadata is None:
             metadata = {}
 
@@ -116,14 +136,22 @@ class MemoryStore:
 
         created_at = time.time()
         embedding = self.embedding_model.encode([text])[0]
+        normalized_scope = self._normalize_scope(scope)
 
         with self._lock, sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO memory (id, text, metadata, created_at, embedding) VALUES (?, ?, ?, ?, ?)",
-                (entry_id, text, json.dumps(metadata), created_at, json.dumps(embedding)),
+                "INSERT OR REPLACE INTO memory (id, text, metadata, created_at, embedding, scope) VALUES (?, ?, ?, ?, ?, ?)",
+                (entry_id, text, json.dumps(metadata), created_at, json.dumps(embedding), normalized_scope),
             )
 
-        return MemoryEntry(id=entry_id, text=text, metadata=metadata, created_at=created_at, embedding=embedding)
+        return MemoryEntry(
+            id=entry_id,
+            text=text,
+            metadata=metadata,
+            created_at=created_at,
+            embedding=embedding,
+            scope=normalized_scope,
+        )
 
     def delete(self, entry_id: str) -> bool:
         with self._lock, sqlite3.connect(self.db_path) as conn:
@@ -132,7 +160,10 @@ class MemoryStore:
 
     def get(self, entry_id: str) -> Optional[MemoryEntry]:
         with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute("SELECT id, text, metadata, created_at, embedding FROM memory WHERE id = ?", (entry_id,)).fetchone()
+            row = conn.execute(
+                "SELECT id, text, metadata, created_at, embedding, scope FROM memory WHERE id = ?",
+                (entry_id,),
+            ).fetchone()
             if row is None:
                 return None
             return MemoryEntry(
@@ -141,11 +172,22 @@ class MemoryStore:
                 metadata=json.loads(row[2]) if row[2] else {},
                 created_at=row[3],
                 embedding=json.loads(row[4]),
+                scope=self._normalize_scope(row[5]),
             )
 
-    def list(self, limit: int = 100) -> List[MemoryEntry]:
+    def list(self, limit: int = 100, scope: Optional[str] = None) -> List[MemoryEntry]:
+        normalized_scope = self._normalize_scope(scope) if scope else None
         with sqlite3.connect(self.db_path) as conn:
-            rows = conn.execute("SELECT id, text, metadata, created_at, embedding FROM memory ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+            if normalized_scope:
+                rows = conn.execute(
+                    "SELECT id, text, metadata, created_at, embedding, scope FROM memory WHERE scope = ? ORDER BY created_at DESC LIMIT ?",
+                    (normalized_scope, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, text, metadata, created_at, embedding, scope FROM memory ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
             return [
                 MemoryEntry(
                     id=row[0],
@@ -153,15 +195,16 @@ class MemoryStore:
                     metadata=json.loads(row[2]) if row[2] else {},
                     created_at=row[3],
                     embedding=json.loads(row[4]),
+                    scope=self._normalize_scope(row[5]),
                 )
                 for row in rows
             ]
 
-    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 5, scope: Optional[str] = None) -> List[Dict[str, Any]]:
         query_emb = self.embedding_model.encode([query])[0]
         query_terms = self._tokenize(query)
 
-        candidates = self.list(limit=1000)
+        candidates = self.list(limit=1000, scope=scope)
         scores = []
 
         for entry in candidates:
@@ -185,6 +228,7 @@ class MemoryStore:
                     "metadata": entry.metadata,
                     "created_at": datetime.fromtimestamp(entry.created_at).isoformat(),
                     "score": score,
+                    "scope": entry.scope,
                 }
             )
 
