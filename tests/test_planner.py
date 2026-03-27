@@ -119,6 +119,27 @@ def test_planner_rule_fallback_routes_reminder_and_browser():
     assert browser_plan.steps[0].params["url"] == "https://example.com"
 
 
+def test_planner_rule_fallback_routes_package_manager():
+    class Broken(LLMRuntime):
+        def generate(self, *args, **kwargs):
+            return "bad-json"
+
+    orchestrator = Orchestrator()
+    orchestrator.register_skill(_NamedSkill("package_manager"))
+    planner = Planner(llm_runtime=Broken(), orchestrator=orchestrator)
+
+    install_plan = planner.plan("install vscode")
+    assert install_plan.steps[0].skill_name == "package_manager"
+    assert install_plan.steps[0].action == "install"
+    assert install_plan.steps[0].params["package"] == "vscode"
+    assert install_plan.steps[0].params["confirmed"] is False
+
+    search_plan = planner.plan("search package git")
+    assert search_plan.steps[0].skill_name == "package_manager"
+    assert search_plan.steps[0].action == "search"
+    assert search_plan.steps[0].params["package"] == "git"
+
+
 def test_planner_prompts_and_high_risk_labels():
     orchestrator = Orchestrator()
     orchestrator.register_skill(_NamedSkill("os_control"))

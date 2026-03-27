@@ -51,6 +51,12 @@ def test_enable_autonomy_sets_active_mode():
     assert daemon.state.get("mode") == AegisDaemon.ACTIVE_MODE
 
 
+def test_daemon_registers_package_manager_skill():
+    daemon = create_test_daemon()
+    skill = daemon.orchestrator.get_skill("package_manager")
+    assert skill.name == "package_manager"
+
+
 def test_daemon_shutdown_closes_conversation_manager():
     daemon = create_test_daemon()
     daemon.shutdown()

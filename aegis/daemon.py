@@ -11,6 +11,7 @@ from .skills.file_skill import FileSkill
 from .skills.shell_skill import ShellSkill
 from .skills.os_control_skill import OSControlSkill
 from .skills.settings_skill import SettingsSkill
+from .skills.package_manager_skill import PackageManagerSkill
 from .skills.web_search_skill import WebSearchSkill
 from .skills.http_skill import HttpSkill
 from .skills.batch_file_skill import BatchFileSkill
@@ -112,6 +113,7 @@ class AegisDaemon:
         self.orchestrator.register_skill(ShellSkill())
         self.orchestrator.register_skill(OSControlSkill())
         self.orchestrator.register_skill(SettingsSkill())
+        self.orchestrator.register_skill(PackageManagerSkill())
         self.orchestrator.register_skill(WebSearchSkill())
         self.orchestrator.register_skill(HttpSkill())
         self.orchestrator.register_skill(BatchFileSkill())
@@ -162,6 +164,7 @@ class AegisDaemon:
         risky_actions = {
             "file": {"write", "append", "delete", "move", "copy"},
             "shell": {"run"},
+            "package_manager": {"install", "remove", "upgrade"},
             "email": {"send"},
             "settings": {"volume", "brightness", "dnd", "network"},
             "os_control": {"launch", "close", "focus", "clipboard_set"},

@@ -39,6 +39,7 @@ class Planner:
         self.high_risk_actions = {
             "file": {"write", "append", "delete", "move", "copy"},
             "shell": {"run"},
+            "package_manager": {"install", "remove", "upgrade"},
             "email": {"send"},
             "settings": {"volume", "brightness", "dnd", "network"},
             "os_control": {"launch", "close", "focus", "clipboard_set"},

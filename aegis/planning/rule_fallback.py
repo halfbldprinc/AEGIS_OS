@@ -48,6 +48,13 @@ class RuleFallbackPlanner:
                 plan.add_step(skill_name="reminder", action=action, params=params)
                 return plan
 
+        if "package_manager" in available_skills:
+            parsed = self.parse_package_action(lower)
+            if parsed is not None:
+                action, params = parsed
+                plan.add_step(skill_name="package_manager", action=action, params=params)
+                return plan
+
         if "calendar" in available_skills:
             parsed = self.parse_calendar(lower)
             if parsed is not None:
@@ -152,5 +159,24 @@ class RuleFallbackPlanner:
 
         if lower in ("list drafts", "show drafts"):
             return None
+
+        return None
+
+    @staticmethod
+    def parse_package_action(lower: str) -> Optional[tuple[str, Dict[str, Any]]]:
+        install_match = re.match(r"^(install|add)\s+([a-z0-9][a-z0-9+._-]{0,63})$", lower)
+        if install_match:
+            return "install", {"package": install_match.group(2), "confirmed": False}
+
+        remove_match = re.match(r"^(remove|uninstall)\s+([a-z0-9][a-z0-9+._-]{0,63})$", lower)
+        if remove_match:
+            return "remove", {"package": remove_match.group(2), "confirmed": False}
+
+        search_match = re.match(r"^(search package|find package)\s+([a-z0-9][a-z0-9+._-]{0,63})$", lower)
+        if search_match:
+            return "search", {"package": search_match.group(2), "limit": 10}
+
+        if lower in ("list installed packages", "show installed packages"):
+            return "list_installed", {"limit": 100}
 
         return None
