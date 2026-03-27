@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import subprocess
 import threading
 import time
@@ -7,6 +8,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from ..hardware import HardwareProfile, detect_hardware_profile
 
 logger = logging.getLogger(__name__)
 
@@ -22,21 +25,64 @@ class LLMRuntime:
         ctx_size: int = 8192,
         host: str = "127.0.0.1",
         port: int = 11434,
-        n_gpu_layers: int = 0,
-        threads: int = 8,
+        n_gpu_layers: Optional[int] = None,
+        threads: Optional[int] = None,
         silent_prompt: bool = True,
+        auto_tune_runtime: Optional[bool] = None,
     ):
         self.model_path = str(Path(model_path).expanduser())
         self.ctx_size = ctx_size
         self.host = host
         self.port = port
-        self.n_gpu_layers = n_gpu_layers
-        self.threads = threads
         self.silent_prompt = silent_prompt
+
+        if auto_tune_runtime is None:
+            auto_tune_runtime = os.getenv("AEGIS_AUTO_TUNE_RUNTIME", "1").lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+
+        self._hardware_profile: Optional[HardwareProfile] = None
+        if auto_tune_runtime:
+            try:
+                self._hardware_profile = detect_hardware_profile()
+            except Exception:
+                logger.exception("Hardware detection failed; falling back to static runtime defaults")
+
+        self.n_gpu_layers = n_gpu_layers if n_gpu_layers is not None else self._recommended_gpu_layers(self._hardware_profile)
+        self.threads = threads if threads is not None else self._recommended_threads(self._hardware_profile)
 
         self.process: Optional[subprocess.Popen] = None
         self._health_thread: Optional[threading.Thread] = None
         self._health_stop = threading.Event()
+
+    @staticmethod
+    def _recommended_threads(profile: Optional[HardwareProfile]) -> int:
+        if profile is None:
+            return 8
+        return max(2, min(profile.cpu_cores, 16))
+
+    @staticmethod
+    def _recommended_gpu_layers(profile: Optional[HardwareProfile]) -> int:
+        if profile is None or not profile.has_gpu:
+            return 0
+        if profile.vram_gb >= 12:
+            return 35
+        if profile.vram_gb >= 8:
+            return 20
+        if profile.vram_gb >= 4:
+            return 8
+        return 0
+
+    def runtime_profile(self) -> Dict[str, Any]:
+        return {
+            "threads": self.threads,
+            "n_gpu_layers": self.n_gpu_layers,
+            "ctx_size": self.ctx_size,
+            "hardware": self._hardware_profile.__dict__ if self._hardware_profile else None,
+        }
 
     @property
     def _base_url(self) -> str:

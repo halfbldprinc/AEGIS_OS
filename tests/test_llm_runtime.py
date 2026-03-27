@@ -3,6 +3,7 @@ import subprocess
 
 import pytest
 
+from aegis.hardware import HardwareProfile
 from aegis.llm.runtime import LLMRuntime, LLMUnavailableError
 from aegis.llm.model_manager import ModelManager
 from aegis.llm.quantizer import Quantizer
@@ -69,6 +70,61 @@ def test_llm_runtime_start_and_generate(monkeypatch, tmp_path):
 
     out = runtime.generate([{"role": "user", "content": "ping"}], temperature=0.1, max_tokens=10)
     assert out == "Hello world"
+
+    runtime.stop()
+
+
+def test_llm_runtime_auto_tunes_from_hardware(monkeypatch, tmp_path):
+    started = {"cmd": None}
+
+    class FakePopen:
+        def __init__(self, cmd, stdout=None, stderr=None):
+            started["cmd"] = cmd
+            self._killed = False
+
+        def poll(self):
+            return None if not self._killed else 0
+
+        def terminate(self):
+            self._killed = True
+
+        def wait(self, timeout=None):
+            return 0
+
+    def fake_urlopen(url, timeout=0):
+        if "health" in str(url):
+            return DummyResponse(b"{}")
+        payload = json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode("utf-8")
+        return DummyResponse(payload)
+
+    monkeypatch.setattr(subprocess, "Popen", FakePopen)
+    monkeypatch.setattr("aegis.llm.runtime.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        "aegis.llm.runtime.detect_hardware_profile",
+        lambda: HardwareProfile(
+            cpu_cores=24,
+            total_ram_gb=64,
+            total_storage_gb=512,
+            has_gpu=True,
+            gpu_vendor="nvidia",
+            vram_gb=16,
+        ),
+    )
+
+    runtime = LLMRuntime(model_path=str(tmp_path / "primary.gguf"), n_gpu_layers=None, threads=None)
+    runtime.start()
+
+    cmd = started["cmd"]
+    assert "--n-gpu-layers" in cmd
+    gpu_idx = cmd.index("--n-gpu-layers")
+    assert cmd[gpu_idx + 1] == "35"
+
+    threads_idx = cmd.index("--threads")
+    assert cmd[threads_idx + 1] == "16"
+
+    profile = runtime.runtime_profile()
+    assert profile["n_gpu_layers"] == 35
+    assert profile["threads"] == 16
 
     runtime.stop()
 
