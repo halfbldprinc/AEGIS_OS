@@ -9,9 +9,11 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from pydantic import BaseModel, Field
 
 from .daemon import AegisDaemon
+from .ai_execution import AIExecutionEngine
 from .desktop_integration import DesktopIntegrationManager
 from .evolution import EvolutionManager
 from .guardian import Guardian
+from .llm.runtime import LLMUnavailableError
 from .memory import MemoryStore
 from .orchestrator import Plan
 from .orchestrator.policy import DefaultExecutionPolicy
@@ -586,6 +588,14 @@ class PackageSimulatePayload(BaseModel):
     package: str = Field(min_length=1, max_length=64)
 
 
+class AIExecutePayload(BaseModel):
+    query: str = Field(min_length=1, max_length=50000)
+    top_k: int = Field(default=5, ge=1, le=25)
+    scope: Optional[str] = None
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=512, ge=1, le=4096)
+
+
 @app.get("/v1/update/status")
 def get_update_status() -> dict:
     return update_manager.status()
@@ -675,6 +685,30 @@ def simulate_package_install(payload: PackageSimulatePayload) -> dict:
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error or "package simulation failed")
     return result.data or {}
+
+
+@app.get("/v1/ai/runtime-health")
+def ai_runtime_health() -> dict:
+    daemon_ref = _get_daemon()
+    engine = AIExecutionEngine(daemon_ref.llm_runtime, memory_store)
+    return engine.health()
+
+
+@app.post("/v1/ai/execute")
+def ai_execute(payload: AIExecutePayload) -> dict:
+    daemon_ref = _get_daemon()
+    scope = _validate_memory_scope(payload.scope)
+    engine = AIExecutionEngine(daemon_ref.llm_runtime, memory_store)
+    try:
+        return engine.execute(
+            query=payload.query,
+            top_k=payload.top_k,
+            scope=scope,
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens,
+        )
+    except LLMUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @app.get("/v1/security/status")

@@ -354,6 +354,46 @@ def test_package_simulate_install_endpoint():
     assert payload["requires_confirmation"] is True
 
 
+def test_ai_runtime_health_endpoint():
+    app.state.daemon = AegisDaemon()
+    response = client.get("/v1/ai/runtime-health")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "runtime_available" in payload
+
+
+def test_ai_execute_endpoint(monkeypatch):
+    app.state.daemon = AegisDaemon()
+
+    daemon_ref = app.state.daemon
+    monkeypatch.setattr(daemon_ref.llm_runtime, "health", lambda: True)
+    monkeypatch.setattr(
+        daemon_ref.llm_runtime,
+        "generate",
+        lambda messages, temperature=0.2, max_tokens=512: "grounded-response",
+    )
+
+    client.post(
+        "/v1/memory/upsert",
+        json={"text": "AegisOS runs local models", "metadata": {"topic": "runtime"}, "scope": "long_term"},
+    )
+
+    response = client.post(
+        "/v1/ai/execute",
+        json={
+            "query": "How does AegisOS execute AI locally?",
+            "top_k": 3,
+            "scope": "long_term",
+            "temperature": 0.1,
+            "max_tokens": 128,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["response"] == "grounded-response"
+    assert payload["retrieval_count"] >= 1
+
+
 def test_sync_connect_endpoint_rejects_invalid_port():
     response = client.post("/v1/sync/connect", json={"peer_id": "p1", "address": "127.0.0.1", "port": 0})
     assert response.status_code == 422
