@@ -85,3 +85,23 @@ def test_package_invalid_name_rejected():
 
     assert not result.success
     assert result.error_code == "MISSING_PACKAGE"
+
+
+def test_package_blocklist_enforced(monkeypatch):
+    monkeypatch.setenv("AEGIS_PACKAGE_BLOCKLIST", "docker.io")
+    skill = PackageManagerSkill()
+
+    result = skill.execute("install", {"package": "docker", "confirmed": True})
+
+    assert not result.success
+    assert result.error_code == "PACKAGE_BLOCKED"
+
+
+def test_package_allowlist_enforced(monkeypatch):
+    monkeypatch.setenv("AEGIS_PACKAGE_ALLOWLIST", "git,python3")
+    skill = PackageManagerSkill()
+
+    result = skill.execute("remove", {"package": "nodejs", "confirmed": True})
+
+    assert not result.success
+    assert result.error_code == "PACKAGE_NOT_ALLOWED"

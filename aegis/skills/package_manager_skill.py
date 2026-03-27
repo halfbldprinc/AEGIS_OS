@@ -24,6 +24,25 @@ class PackageManagerSkill(Skill):
         "git": "git",
     }
 
+    def __init__(self):
+        allow_raw = os.getenv("AEGIS_PACKAGE_ALLOWLIST", "").strip()
+        block_raw = os.getenv("AEGIS_PACKAGE_BLOCKLIST", "").strip()
+        self._allowlist = {item.strip().lower() for item in allow_raw.split(",") if item.strip()}
+        self._blocklist = {item.strip().lower() for item in block_raw.split(",") if item.strip()}
+
+    def _check_package_policy(self, package: str) -> Optional[SkillResult]:
+        if package in self._blocklist:
+            return SkillResult.fail(
+                f"Package '{package}' blocked by policy",
+                error_code="PACKAGE_BLOCKED",
+            )
+        if self._allowlist and package not in self._allowlist:
+            return SkillResult.fail(
+                f"Package '{package}' not allowed by policy",
+                error_code="PACKAGE_NOT_ALLOWED",
+            )
+        return None
+
     def execute(self, action: str, params: Dict[str, Any]) -> SkillResult:
         if action == "resolve":
             return self.resolve(params.get("package", ""))
@@ -73,6 +92,9 @@ class PackageManagerSkill(Skill):
             return SkillResult.fail("No supported package manager found", error_code="NO_PACKAGE_MANAGER")
 
         resolved = self._ALIASES.get(normalized, normalized)
+        policy_error = self._check_package_policy(resolved)
+        if policy_error is not None:
+            return policy_error
         if backend == "apt":
             cmd = ["apt-cache", "search", resolved]
         elif backend == "dnf":
@@ -108,6 +130,9 @@ class PackageManagerSkill(Skill):
         if not normalized:
             return SkillResult.fail("'package' parameter is required", error_code="MISSING_PACKAGE")
         resolved = self._ALIASES.get(normalized, normalized)
+        policy_error = self._check_package_policy(resolved)
+        if policy_error is not None:
+            return policy_error
 
         if backend == "apt":
             cmd = ["apt-get", "install", "-y", resolved]
@@ -135,6 +160,9 @@ class PackageManagerSkill(Skill):
         if not normalized:
             return SkillResult.fail("'package' parameter is required", error_code="MISSING_PACKAGE")
         resolved = self._ALIASES.get(normalized, normalized)
+        policy_error = self._check_package_policy(resolved)
+        if policy_error is not None:
+            return policy_error
 
         if backend == "apt":
             cmd = ["apt-get", "remove", "-y", resolved]
@@ -161,6 +189,9 @@ class PackageManagerSkill(Skill):
         package = self._normalize_package(package) if package else ""
         if package:
             resolved = self._ALIASES.get(package, package)
+            policy_error = self._check_package_policy(resolved)
+            if policy_error is not None:
+                return policy_error
             if backend == "apt":
                 cmd = ["apt-get", "install", "--only-upgrade", "-y", resolved]
             elif backend == "dnf":
@@ -209,7 +240,11 @@ class PackageManagerSkill(Skill):
             return result
 
         lines = [line.strip() for line in (result.data.get("stdout", "") or "").splitlines() if line.strip()]
-        return SkillResult.ok({"backend": backend, "packages": lines[: max(1, min(limit, 1000))]})
+        packages = lines[: max(1, min(limit, 1000))]
+        if self._allowlist:
+            packages = [pkg for pkg in packages if pkg in self._allowlist]
+        packages = [pkg for pkg in packages if pkg not in self._blocklist]
+        return SkillResult.ok({"backend": backend, "packages": packages})
 
     def get_action_schemas(self) -> Dict[str, ActionSchema]:
         package_spec = ParamSpec(
