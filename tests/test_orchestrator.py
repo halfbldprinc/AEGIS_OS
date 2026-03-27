@@ -300,6 +300,15 @@ def test_default_policy_profile_allows_confirmed_override():
     assert decision.allowed
 
 
+def test_default_policy_profile_persistence(tmp_path):
+    state_path = tmp_path / "policy_state.json"
+    policy = DefaultExecutionPolicy(profile="balanced", state_path=str(state_path))
+    assert policy.set_profile("strict") == "strict"
+
+    reloaded = DefaultExecutionPolicy(state_path=str(state_path))
+    assert reloaded.get_profile()["profile"] == "strict"
+
+
 def test_container_runner_sbom_and_vuln_scan():
     from aegis.orchestrator.container_runner import ContainerizedRunner
 

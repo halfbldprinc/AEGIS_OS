@@ -309,7 +309,8 @@ def test_desktop_integration_endpoints(tmp_path):
     assert planned["status"] == "planned"
 
 
-def test_policy_profile_endpoints():
+def test_policy_profile_endpoints(tmp_path, monkeypatch):
+    monkeypatch.setenv("AEGIS_POLICY_STATE_PATH", str(tmp_path / "policy_state.json"))
     app.state.daemon = AegisDaemon()
 
     response = client.get("/v1/policy/profile")

@@ -1,6 +1,7 @@
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol, Dict, Any, Mapping, Iterable
 
 from ..trust_ledger import TrustLedger
@@ -29,6 +30,7 @@ class DefaultExecutionPolicy:
         enforce_action_allowlist: bool | None = None,
         allowlist: Mapping[str, Iterable[str]] | None = None,
         profile: str | None = None,
+        state_path: str | None = None,
     ):
         if enforce_action_allowlist is None:
             enforce_action_allowlist = os.getenv("AEGIS_ENFORCE_ACTION_ALLOWLIST", "0").lower() in {
@@ -39,7 +41,12 @@ class DefaultExecutionPolicy:
             }
         self.enforce_action_allowlist = enforce_action_allowlist
         self.allowlist = self._load_allowlist(allowlist)
-        self.profile = self._normalize_profile(profile or os.getenv("AEGIS_POLICY_PROFILE", "balanced"))
+        self._state_path = Path(
+            state_path or os.getenv("AEGIS_POLICY_STATE_PATH", "~/.aegis/policy_state.json")
+        ).expanduser()
+        persisted_profile = self._load_persisted_profile()
+        selected_profile = profile or persisted_profile or os.getenv("AEGIS_POLICY_PROFILE", "balanced")
+        self.profile = self._normalize_profile(selected_profile)
 
     PROFILE_DENY_RULES: Dict[str, Dict[str, set[str]]] = {
         "open": {},
@@ -64,6 +71,7 @@ class DefaultExecutionPolicy:
 
     def set_profile(self, profile: str) -> str:
         self.profile = self._normalize_profile(profile)
+        self._save_persisted_profile(self.profile)
         return self.profile
 
     def get_profile(self) -> Dict[str, Any]:
@@ -73,7 +81,28 @@ class DefaultExecutionPolicy:
             "profile": self.profile,
             "deny_rules": serialized_rules,
             "allowlist_enforced": self.enforce_action_allowlist,
+            "state_path": str(self._state_path),
         }
+
+    def _load_persisted_profile(self) -> str | None:
+        if not self._state_path.exists():
+            return None
+        try:
+            data = json.loads(self._state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        profile = data.get("profile") if isinstance(data, dict) else None
+        if not isinstance(profile, str):
+            return None
+        return self._normalize_profile(profile)
+
+    def _save_persisted_profile(self, profile: str) -> None:
+        payload = {"profile": self._normalize_profile(profile)}
+        try:
+            self._state_path.parent.mkdir(parents=True, exist_ok=True)
+            self._state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except OSError:
+            return
 
     def _is_denied_by_profile(self, skill_name: str, action: str) -> bool:
         rules = self.PROFILE_DENY_RULES.get(self.profile, {})
