@@ -3,7 +3,7 @@ import os
 import hmac
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 class SkillRegistry:
@@ -42,7 +42,7 @@ class SkillRegistry:
         self,
         name: str,
         tier: int,
-        permissions: Optional[list] = None,
+        permissions: Optional[List[str]] = None,
         hash_value: Optional[str] = None,
         trusted_builtin: bool = True,
     ) -> None:
@@ -58,7 +58,7 @@ class SkillRegistry:
         self._data[name] = record
         self._save()
 
-    def register_external(self, name: str, tier: int, permissions: Optional[list] = None, hash_value: Optional[str] = None) -> None:
+    def register_external(self, name: str, tier: int, permissions: Optional[List[str]] = None, hash_value: Optional[str] = None) -> None:
         self.register(name=name, tier=tier, permissions=permissions, hash_value=hash_value, trusted_builtin=False)
 
     def get(self, name: str) -> Optional[Dict[str, Any]]:
@@ -67,7 +67,7 @@ class SkillRegistry:
     def list(self) -> Dict[str, Dict[str, Any]]:
         return dict(self._data)
 
-    def _compute_hash(self, name: str, tier: int, permissions: list[str]) -> str:
+    def _compute_hash(self, name: str, tier: int, permissions: List[str]) -> str:
         payload = json.dumps({"name": name, "tier": tier, "permissions": sorted(permissions)}, sort_keys=True)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
