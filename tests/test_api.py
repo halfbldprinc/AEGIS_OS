@@ -396,6 +396,44 @@ def test_ai_execute_endpoint(monkeypatch):
     assert payload["retrieval_count"] >= 1
 
 
+def test_ai_diagnostics_endpoint(monkeypatch):
+    app.state.daemon = AegisDaemon()
+    import aegis.api as api_module
+
+    daemon_ref = app.state.daemon
+    monkeypatch.setattr(daemon_ref.llm_runtime, "health", lambda: True)
+    monkeypatch.setattr(
+        daemon_ref.llm_runtime,
+        "generate",
+        lambda messages, temperature=0.2, max_tokens=512: "test-response",
+    )
+
+    # Populate memory and execute a query to generate diagnostics
+    client.post(
+        "/v1/memory/upsert",
+        json={"text": "Diagnostics test data", "metadata": {"topic": "test"}, "scope": "long_term"},
+    )
+    client.post(
+        "/v1/ai/execute",
+        json={
+            "query": "test query",
+            "top_k": 3,
+            "scope": "long_term",
+            "temperature": 0.5,
+            "max_tokens": 256,
+        },
+    )
+
+    # Now check diagnostics
+    response = client.get("/v1/ai/diagnostics")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "retrieval" in payload
+    assert "generation" in payload
+    assert payload["retrieval"]["sample_count"] >= 1
+    assert payload["generation"]["sample_count"] >= 1
+
+
 def test_sync_connect_endpoint_rejects_invalid_port():
     response = client.post("/v1/sync/connect", json={"peer_id": "p1", "address": "127.0.0.1", "port": 0})
     assert response.status_code == 422

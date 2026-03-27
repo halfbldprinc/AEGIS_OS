@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from .daemon import AegisDaemon
 from .ai_execution import AIExecutionEngine
+from .ai_diagnostics import AIExecutionDiagnostics
 from .desktop_integration import DesktopIntegrationManager
 from .evolution import EvolutionManager
 from .guardian import Guardian
@@ -28,6 +29,7 @@ from .logging import configure_logging
 configure_logging()
 daemon = AegisDaemon()
 memory_store = MemoryStore()
+ai_diagnostics = AIExecutionDiagnostics()
 
 
 def _validate_memory_scope(scope: Optional[str]) -> Optional[str]:
@@ -745,7 +747,7 @@ def switch_model(payload: ModelSwitchPayload) -> dict:
 @app.get("/v1/ai/runtime-health")
 def ai_runtime_health() -> dict:
     daemon_ref = _get_daemon()
-    engine = AIExecutionEngine(daemon_ref.llm_runtime, memory_store)
+    engine = AIExecutionEngine(daemon_ref.llm_runtime, memory_store, diagnostics=ai_diagnostics)
     return engine.health()
 
 
@@ -753,7 +755,7 @@ def ai_runtime_health() -> dict:
 def ai_execute(payload: AIExecutePayload) -> dict:
     daemon_ref = _get_daemon()
     scope = _validate_memory_scope(payload.scope)
-    engine = AIExecutionEngine(daemon_ref.llm_runtime, memory_store)
+    engine = AIExecutionEngine(daemon_ref.llm_runtime, memory_store, diagnostics=ai_diagnostics)
     try:
         return engine.execute(
             query=payload.query,
@@ -764,6 +766,11 @@ def ai_execute(payload: AIExecutePayload) -> dict:
         )
     except LLMUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/v1/ai/diagnostics")
+def ai_diagnostics_endpoint() -> dict:
+    return ai_diagnostics.get_diagnostics()
 
 
 @app.get("/v1/security/status")
