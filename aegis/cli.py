@@ -68,6 +68,29 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="Polling interval in seconds between availability checks",
     )
+    control_panel_parser = agent_subparsers.add_parser(
+        "control-panel",
+        help="Launch the AEGIS Control Panel desktop app",
+    )
+    control_panel_parser.add_argument(
+        "--api",
+        default="http://127.0.0.1:8000",
+        help="Base URL of AEGIS API",
+    )
+    launcher_parser = agent_subparsers.add_parser(
+        "launcher",
+        help="Launch the quick natural-language command prompt",
+    )
+    launcher_parser.add_argument(
+        "--api",
+        default="http://127.0.0.1:8000",
+        help="Base URL of AEGIS API",
+    )
+    launcher_parser.add_argument("--tray", action="store_true", help="Run persistent tray mode")
+    launcher_parser.add_argument("--toggle", action="store_true", help="Toggle existing tray window")
+    launcher_parser.add_argument("--show", action="store_true", help="Show existing tray window")
+    launcher_parser.add_argument("--hide", action="store_true", help="Hide existing tray window")
+    launcher_parser.add_argument("--quit", action="store_true", help="Stop existing tray launcher")
     agent_subparsers.add_parser("stop", help="Stop voice monitoring daemon")
     agent_subparsers.add_parser("status", help="Check agent daemon status")
 
@@ -360,6 +383,25 @@ def main(argv: Optional[list[str]] = None) -> None:
             run_agent(wakeword_required=not args.no_wakeword, poll_interval=max(0.05, float(args.poll_interval)))
         elif args.agent_command == "text-fallback":
             run_text_fallback(poll_interval=max(0.2, float(args.poll_interval)))
+        elif args.agent_command == "control-panel":
+            from .ui.control_panel import ControlPanelApp
+
+            ControlPanelApp(api_base_url=args.api).run()
+        elif args.agent_command == "launcher":
+            from .ui import launcher as launcher_module
+
+            argv = ["--api", args.api]
+            if args.tray:
+                argv.append("--tray")
+            if args.toggle:
+                argv.append("--toggle")
+            if args.show:
+                argv.append("--show")
+            if args.hide:
+                argv.append("--hide")
+            if args.quit:
+                argv.append("--quit")
+            launcher_module.main(argv)
         elif args.agent_command == "stop":
             print("Use systemctl stop aegis-agent.service for integrated Linux deployments")
         elif args.agent_command == "status":

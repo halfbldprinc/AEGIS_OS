@@ -15,6 +15,16 @@ class DesktopIntegrationPaths:
     widget_launcher_desktop: Path
     widget_autostart_desktop: Path
     widget_script: Path
+    control_panel_launcher_desktop: Path
+    control_panel_script: Path
+    launcher_script: Path
+    quick_launcher_desktop: Path
+    launcher_tray_script: Path
+    launcher_toggle_script: Path
+    launcher_tray_autostart_desktop: Path
+    app_action_script: Path
+    package_action_script: Path
+    system_action_script: Path
 
 
 class DesktopIntegrationManager:
@@ -35,6 +45,16 @@ class DesktopIntegrationManager:
             widget_launcher_desktop=home / ".local/share/applications/aegisos-widget.desktop",
             widget_autostart_desktop=home / ".config/autostart/aegisos-widget.desktop",
             widget_script=home / ".local/bin/aegis-widget",
+            control_panel_launcher_desktop=home / ".local/share/applications/aegisos-control-panel.desktop",
+            control_panel_script=home / ".local/bin/aegis-control-panel",
+            launcher_script=home / ".local/bin/aegis-launcher",
+            quick_launcher_desktop=home / ".local/share/applications/aegisos-launcher.desktop",
+            launcher_tray_script=home / ".local/bin/aegis-launcher-tray",
+            launcher_toggle_script=home / ".local/bin/aegis-launcher-toggle",
+            launcher_tray_autostart_desktop=home / ".config/autostart/aegisos-launcher-tray.desktop",
+            app_action_script=home / ".local/bin/aegis-launch-app",
+            package_action_script=home / ".local/bin/aegis-install-package",
+            system_action_script=home / ".local/bin/aegis-system-action",
         )
 
     def status(self, home_dir: str | None = None) -> Dict[str, Any]:
@@ -53,6 +73,16 @@ class DesktopIntegrationManager:
             "widget_launcher_installed": paths.widget_launcher_desktop.exists(),
             "widget_autostart_installed": paths.widget_autostart_desktop.exists(),
             "widget_script_installed": paths.widget_script.exists(),
+            "control_panel_launcher_installed": paths.control_panel_launcher_desktop.exists(),
+            "control_panel_script_installed": paths.control_panel_script.exists(),
+            "launcher_script_installed": paths.launcher_script.exists(),
+            "launcher_desktop_entry_installed": paths.quick_launcher_desktop.exists(),
+            "launcher_tray_script_installed": paths.launcher_tray_script.exists(),
+            "launcher_toggle_script_installed": paths.launcher_toggle_script.exists(),
+            "launcher_tray_autostart_installed": paths.launcher_tray_autostart_desktop.exists(),
+            "app_action_script_installed": paths.app_action_script.exists(),
+            "package_action_script_installed": paths.package_action_script.exists(),
+            "system_action_script_installed": paths.system_action_script.exists(),
             "paths": {
                 "autostart_desktop": str(paths.autostart_desktop),
                 "launcher_desktop": str(paths.launcher_desktop),
@@ -62,6 +92,16 @@ class DesktopIntegrationManager:
                 "widget_launcher_desktop": str(paths.widget_launcher_desktop),
                 "widget_autostart_desktop": str(paths.widget_autostart_desktop),
                 "widget_script": str(paths.widget_script),
+                "control_panel_launcher_desktop": str(paths.control_panel_launcher_desktop),
+                "control_panel_script": str(paths.control_panel_script),
+                "launcher_script": str(paths.launcher_script),
+                "launcher_desktop": str(paths.quick_launcher_desktop),
+                "launcher_tray_script": str(paths.launcher_tray_script),
+                "launcher_toggle_script": str(paths.launcher_toggle_script),
+                "launcher_tray_autostart_desktop": str(paths.launcher_tray_autostart_desktop),
+                "app_action_script": str(paths.app_action_script),
+                "package_action_script": str(paths.package_action_script),
+                "system_action_script": str(paths.system_action_script),
             },
         }
 
@@ -198,3 +238,189 @@ class DesktopIntegrationManager:
             paths.widget_autostart_desktop.unlink()
 
         return {"status": "installed", "autostart": autostart, "result": self.widget_status(home_dir=home_dir)}
+
+    def control_panel_status(self, home_dir: str | None = None) -> Dict[str, Any]:
+        paths = self._paths_for_home(home_dir)
+        return {
+            "control_panel_launcher_installed": paths.control_panel_launcher_desktop.exists(),
+            "control_panel_script_installed": paths.control_panel_script.exists(),
+            "launcher_script_installed": paths.launcher_script.exists(),
+            "launcher_desktop_entry_installed": paths.quick_launcher_desktop.exists(),
+            "launcher_tray_script_installed": paths.launcher_tray_script.exists(),
+            "launcher_toggle_script_installed": paths.launcher_toggle_script.exists(),
+            "launcher_tray_autostart_installed": paths.launcher_tray_autostart_desktop.exists(),
+            "app_action_script_installed": paths.app_action_script.exists(),
+            "package_action_script_installed": paths.package_action_script.exists(),
+            "system_action_script_installed": paths.system_action_script.exists(),
+            "paths": {
+                "control_panel_launcher_desktop": str(paths.control_panel_launcher_desktop),
+                "control_panel_script": str(paths.control_panel_script),
+                "launcher_script": str(paths.launcher_script),
+                "launcher_desktop": str(paths.quick_launcher_desktop),
+                "launcher_tray_script": str(paths.launcher_tray_script),
+                "launcher_toggle_script": str(paths.launcher_toggle_script),
+                "launcher_tray_autostart_desktop": str(paths.launcher_tray_autostart_desktop),
+                "app_action_script": str(paths.app_action_script),
+                "package_action_script": str(paths.package_action_script),
+                "system_action_script": str(paths.system_action_script),
+            },
+        }
+
+    def install_control_panel(self, home_dir: str | None = None, dry_run: bool = False) -> Dict[str, Any]:
+        paths = self._paths_for_home(home_dir)
+
+        control_panel_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "exec python3 -m aegis.ui.control_panel\n"
+        )
+
+        launcher_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "exec python3 -m aegis.ui.launcher \"$@\"\n"
+        )
+
+        launcher_tray_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "exec python3 -m aegis.ui.launcher --tray \"$@\"\n"
+        )
+
+        launcher_toggle_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "exec python3 -m aegis.ui.launcher --toggle \"$@\"\n"
+        )
+
+        app_action_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "if [[ $# -lt 1 ]]; then\n"
+            "  echo \"Usage: aegis-launch-app <application name>\" >&2\n"
+            "  exit 1\n"
+            "fi\n"
+            "target=\"$*\"\n"
+            "instruction=\"launch application ${target}\"\n"
+            "escaped=${instruction//\"/\\\\\"}\n"
+            "curl -sS -X POST "
+            + f"{self.api_base_url}/v1/process-and-execute"
+            + " -H 'Content-Type: application/json' "
+            + "-d \"{\\\"text\\\":\\\"${escaped}\\\",\\\"allow_failure\\\":false}\"\n"
+        )
+
+        package_action_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "if [[ $# -lt 1 ]]; then\n"
+            "  echo \"Usage: aegis-install-package <package name>\" >&2\n"
+            "  exit 1\n"
+            "fi\n"
+            "target=\"$*\"\n"
+            "instruction=\"install package ${target}\"\n"
+            "escaped=${instruction//\"/\\\\\"}\n"
+            "curl -sS -X POST "
+            + f"{self.api_base_url}/v1/process-and-execute"
+            + " -H 'Content-Type: application/json' "
+            + "-d \"{\\\"text\\\":\\\"${escaped}\\\",\\\"allow_failure\\\":false}\"\n"
+        )
+
+        system_action_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "if [[ $# -lt 1 ]]; then\n"
+            "  echo \"Usage: aegis-system-action <action phrase>\" >&2\n"
+            "  exit 1\n"
+            "fi\n"
+            "target=\"$*\"\n"
+            "instruction=\"perform system action ${target}\"\n"
+            "escaped=${instruction//\"/\\\\\"}\n"
+            "curl -sS -X POST "
+            + f"{self.api_base_url}/v1/process-and-execute"
+            + " -H 'Content-Type: application/json' "
+            + "-d \"{\\\"text\\\":\\\"${escaped}\\\",\\\"allow_failure\\\":false}\"\n"
+        )
+
+        control_panel_desktop = (
+            "[Desktop Entry]\n"
+            "Version=1.0\n"
+            "Type=Application\n"
+            "Name=AegisOS Control Panel\n"
+            "Comment=Open the AegisOS control panel dashboard\n"
+            f"Exec={paths.control_panel_script}\n"
+            "Terminal=false\n"
+            "Categories=Utility;System;\n"
+        )
+
+        launcher_desktop = (
+            "[Desktop Entry]\n"
+            "Version=1.0\n"
+            "Type=Application\n"
+            "Name=AegisOS Launcher\n"
+            "Comment=Quick natural-language command prompt for AegisOS\n"
+            f"Exec={paths.launcher_script}\n"
+            "Terminal=false\n"
+            "Categories=Utility;System;\n"
+        )
+
+        launcher_tray_autostart_desktop = (
+            "[Desktop Entry]\n"
+            "Version=1.0\n"
+            "Type=Application\n"
+            "Name=AegisOS Launcher Tray\n"
+            "Comment=Persistent background launcher for global hotkey toggling\n"
+            f"Exec={paths.launcher_tray_script}\n"
+            "Terminal=false\n"
+            "Categories=Utility;System;\n"
+            "X-GNOME-Autostart-enabled=true\n"
+        )
+
+        if dry_run:
+            return {
+                "status": "planned",
+                "files": {
+                    "control_panel_script": str(paths.control_panel_script),
+                    "control_panel_launcher_desktop": str(paths.control_panel_launcher_desktop),
+                    "launcher_script": str(paths.launcher_script),
+                    "launcher_desktop": str(paths.quick_launcher_desktop),
+                    "launcher_tray_script": str(paths.launcher_tray_script),
+                    "launcher_toggle_script": str(paths.launcher_toggle_script),
+                    "launcher_tray_autostart_desktop": str(paths.launcher_tray_autostart_desktop),
+                    "app_action_script": str(paths.app_action_script),
+                    "package_action_script": str(paths.package_action_script),
+                    "system_action_script": str(paths.system_action_script),
+                },
+            }
+
+        paths.control_panel_script.parent.mkdir(parents=True, exist_ok=True)
+        paths.control_panel_launcher_desktop.parent.mkdir(parents=True, exist_ok=True)
+        paths.launcher_script.parent.mkdir(parents=True, exist_ok=True)
+        paths.quick_launcher_desktop.parent.mkdir(parents=True, exist_ok=True)
+        paths.launcher_tray_script.parent.mkdir(parents=True, exist_ok=True)
+        paths.launcher_toggle_script.parent.mkdir(parents=True, exist_ok=True)
+        paths.launcher_tray_autostart_desktop.parent.mkdir(parents=True, exist_ok=True)
+        paths.app_action_script.parent.mkdir(parents=True, exist_ok=True)
+        paths.package_action_script.parent.mkdir(parents=True, exist_ok=True)
+        paths.system_action_script.parent.mkdir(parents=True, exist_ok=True)
+
+        paths.control_panel_script.write_text(control_panel_script, encoding="utf-8")
+        paths.control_panel_script.chmod(0o755)
+        paths.control_panel_launcher_desktop.write_text(control_panel_desktop, encoding="utf-8")
+
+        paths.launcher_script.write_text(launcher_script, encoding="utf-8")
+        paths.launcher_script.chmod(0o755)
+        paths.quick_launcher_desktop.write_text(launcher_desktop, encoding="utf-8")
+        paths.launcher_tray_script.write_text(launcher_tray_script, encoding="utf-8")
+        paths.launcher_tray_script.chmod(0o755)
+        paths.launcher_toggle_script.write_text(launcher_toggle_script, encoding="utf-8")
+        paths.launcher_toggle_script.chmod(0o755)
+        paths.launcher_tray_autostart_desktop.write_text(launcher_tray_autostart_desktop, encoding="utf-8")
+
+        paths.app_action_script.write_text(app_action_script, encoding="utf-8")
+        paths.app_action_script.chmod(0o755)
+        paths.package_action_script.write_text(package_action_script, encoding="utf-8")
+        paths.package_action_script.chmod(0o755)
+        paths.system_action_script.write_text(system_action_script, encoding="utf-8")
+        paths.system_action_script.chmod(0o755)
+
+        return {"status": "installed", "result": self.control_panel_status(home_dir=home_dir)}

@@ -38,3 +38,26 @@ def test_desktop_widget_install_and_status(tmp_path):
     assert status["widget_script_installed"] is True
     assert status["widget_launcher_installed"] is True
     assert status["widget_autostart_installed"] is True
+
+
+def test_control_panel_install_and_status(tmp_path):
+    manager = DesktopIntegrationManager(api_base_url="http://127.0.0.1:8000")
+
+    planned = manager.install_control_panel(home_dir=str(tmp_path), dry_run=True)
+    assert planned["status"] == "planned"
+    assert planned["files"]["control_panel_script"].endswith(".local/bin/aegis-control-panel")
+
+    installed = manager.install_control_panel(home_dir=str(tmp_path), dry_run=False)
+    assert installed["status"] == "installed"
+
+    status = manager.control_panel_status(home_dir=str(tmp_path))
+    assert status["control_panel_script_installed"] is True
+    assert status["control_panel_launcher_installed"] is True
+    assert status["launcher_script_installed"] is True
+    assert status["launcher_desktop_entry_installed"] is True
+    assert status["launcher_tray_script_installed"] is True
+    assert status["launcher_toggle_script_installed"] is True
+    assert status["launcher_tray_autostart_installed"] is True
+    assert status["app_action_script_installed"] is True
+    assert status["package_action_script_installed"] is True
+    assert status["system_action_script_installed"] is True
