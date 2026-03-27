@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, Dict, Any, Mapping, Iterable
@@ -47,6 +48,8 @@ class DefaultExecutionPolicy:
         persisted_profile = self._load_persisted_profile()
         selected_profile = profile or persisted_profile or os.getenv("AEGIS_POLICY_PROFILE", "balanced")
         self.profile = self._normalize_profile(selected_profile)
+        self.quota_window_seconds = max(5, int(os.getenv("AEGIS_POLICY_QUOTA_WINDOW_SECONDS", "60")))
+        self._quota_usage: Dict[str, list[float]] = {}
 
     PROFILE_DENY_RULES: Dict[str, Dict[str, set[str]]] = {
         "open": {},
@@ -59,6 +62,30 @@ class DefaultExecutionPolicy:
             "os_control": {"launch", "close", "focus", "clipboard_set"},
             "settings": {"volume", "brightness", "dnd", "network"},
             "package_manager": {"install", "remove", "upgrade"},
+        },
+    }
+
+    PROFILE_QUOTA_RULES: Dict[str, Dict[str, int]] = {
+        "open": {
+            "shell:run": 60,
+            "web_search:search": 120,
+            "package_manager:install": 20,
+            "package_manager:remove": 20,
+            "package_manager:upgrade": 10,
+        },
+        "balanced": {
+            "shell:run": 10,
+            "web_search:search": 40,
+            "package_manager:install": 6,
+            "package_manager:remove": 4,
+            "package_manager:upgrade": 2,
+        },
+        "strict": {
+            "shell:run": 2,
+            "web_search:search": 2,
+            "package_manager:install": 2,
+            "package_manager:remove": 1,
+            "package_manager:upgrade": 1,
         },
     }
 
@@ -80,9 +107,65 @@ class DefaultExecutionPolicy:
         return {
             "profile": self.profile,
             "deny_rules": serialized_rules,
+            "quota_rules": self.PROFILE_QUOTA_RULES.get(self.profile, {}),
+            "quota_window_seconds": self.quota_window_seconds,
             "allowlist_enforced": self.enforce_action_allowlist,
             "state_path": str(self._state_path),
         }
+
+    def _quota_key(self, skill_name: str, action: str) -> str:
+        return f"{skill_name}:{action}"
+
+    def _quota_limit(self, skill_name: str, action: str) -> int | None:
+        rules = self.PROFILE_QUOTA_RULES.get(self.profile, {})
+        return rules.get(self._quota_key(skill_name, action))
+
+    def _prune_quota(self, key: str, now: float) -> None:
+        cutoff = now - float(self.quota_window_seconds)
+        samples = self._quota_usage.get(key, [])
+        if not samples:
+            return
+        self._quota_usage[key] = [ts for ts in samples if ts >= cutoff]
+
+    def _is_quota_exceeded(self, skill_name: str, action: str) -> bool:
+        limit = self._quota_limit(skill_name, action)
+        if limit is None:
+            return False
+
+        key = self._quota_key(skill_name, action)
+        now = time.time()
+        self._prune_quota(key, now)
+        return len(self._quota_usage.get(key, [])) >= limit
+
+    def _record_quota_usage(self, skill_name: str, action: str) -> None:
+        key = self._quota_key(skill_name, action)
+        now = time.time()
+        self._prune_quota(key, now)
+        self._quota_usage.setdefault(key, []).append(now)
+
+    def get_quota_status(self) -> Dict[str, Any]:
+        now = time.time()
+        rules = self.PROFILE_QUOTA_RULES.get(self.profile, {})
+        usage: Dict[str, Any] = {}
+        for key, limit in rules.items():
+            self._prune_quota(key, now)
+            usage[key] = {
+                "used": len(self._quota_usage.get(key, [])),
+                "limit": limit,
+                "window_seconds": self.quota_window_seconds,
+            }
+        return {
+            "profile": self.profile,
+            "window_seconds": self.quota_window_seconds,
+            "usage": usage,
+        }
+
+    def reset_quota_usage(self, key: str | None = None) -> Dict[str, Any]:
+        if key:
+            self._quota_usage.pop(key, None)
+            return {"status": "reset", "scope": key}
+        self._quota_usage.clear()
+        return {"status": "reset", "scope": "all"}
 
     def _load_persisted_profile(self) -> str | None:
         if not self._state_path.exists():
@@ -150,9 +233,21 @@ class DefaultExecutionPolicy:
 
         if self.enforce_action_allowlist:
             if params.get("confirmed", False):
+                self._record_quota_usage(skill_name, action)
                 return PolicyDecision(True, "allowed_by_confirmation")
             if not self._is_allowed_by_allowlist(skill_name, action):
                 return PolicyDecision(False, f"skill '{skill_name}' action '{action}' blocked by allowlist")
+
+        if not params.get("confirmed", False) and self._is_quota_exceeded(skill_name, action):
+            return PolicyDecision(
+                False,
+                (
+                    f"skill '{skill_name}' action '{action}' exceeded quota for profile "
+                    f"'{self.profile}' in {self.quota_window_seconds}s window"
+                ),
+            )
+
+        self._record_quota_usage(skill_name, action)
 
         return PolicyDecision(True, "allowed")
 

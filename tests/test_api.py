@@ -324,6 +324,27 @@ def test_policy_profile_endpoints(tmp_path, monkeypatch):
     assert payload["profile"] == "strict"
 
 
+def test_policy_quota_endpoints(tmp_path, monkeypatch):
+    monkeypatch.setenv("AEGIS_POLICY_STATE_PATH", str(tmp_path / "policy_state.json"))
+    app.state.daemon = AegisDaemon()
+
+    # Consume strict web_search quota quickly.
+    client.post("/v1/policy/profile", json={"profile": "strict"})
+    daemon_ref = app.state.daemon
+    policy = daemon_ref.orchestrator.policy
+    policy.evaluate("web_search", "search", params={}, trust_ledger=daemon_ref.trust_ledger)
+    policy.evaluate("web_search", "search", params={}, trust_ledger=daemon_ref.trust_ledger)
+
+    response = client.get("/v1/policy/quota")
+    assert response.status_code == 200
+    usage = response.json()["usage"]
+    assert usage["web_search:search"]["used"] >= 2
+
+    response = client.post("/v1/policy/quota/reset", json={"key": "web_search:search"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "reset"
+
+
 def test_sync_connect_endpoint_rejects_invalid_port():
     response = client.post("/v1/sync/connect", json={"peer_id": "p1", "address": "127.0.0.1", "port": 0})
     assert response.status_code == 422

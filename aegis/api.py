@@ -578,6 +578,10 @@ class PolicyProfilePayload(BaseModel):
     profile: str = Field(min_length=1, max_length=32)
 
 
+class PolicyQuotaResetPayload(BaseModel):
+    key: Optional[str] = None
+
+
 @app.get("/v1/update/status")
 def get_update_status() -> dict:
     return update_manager.status()
@@ -637,6 +641,24 @@ def set_policy_profile(payload: PolicyProfilePayload) -> dict:
         raise HTTPException(status_code=400, detail="Active policy does not support profile management")
     profile = policy.set_profile(payload.profile)
     return {"status": "updated", "profile": profile, "details": policy.get_profile()}
+
+
+@app.get("/v1/policy/quota")
+def get_policy_quota_status() -> dict:
+    daemon_ref = _get_daemon()
+    policy = daemon_ref.orchestrator.policy
+    if not isinstance(policy, DefaultExecutionPolicy):
+        raise HTTPException(status_code=400, detail="Active policy does not support quota management")
+    return policy.get_quota_status()
+
+
+@app.post("/v1/policy/quota/reset")
+def reset_policy_quota(payload: PolicyQuotaResetPayload) -> dict:
+    daemon_ref = _get_daemon()
+    policy = daemon_ref.orchestrator.policy
+    if not isinstance(policy, DefaultExecutionPolicy):
+        raise HTTPException(status_code=400, detail="Active policy does not support quota management")
+    return policy.reset_quota_usage(key=payload.key)
 
 
 @app.get("/v1/security/status")

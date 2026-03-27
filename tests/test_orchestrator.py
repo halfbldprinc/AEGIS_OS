@@ -309,6 +309,32 @@ def test_default_policy_profile_persistence(tmp_path):
     assert reloaded.get_profile()["profile"] == "strict"
 
 
+def test_default_policy_quota_enforced():
+    policy = DefaultExecutionPolicy(profile="strict")
+
+    first = policy.evaluate("web_search", "search", params={}, trust_ledger=TrustLedger())
+    second = policy.evaluate("web_search", "search", params={}, trust_ledger=TrustLedger())
+    third = policy.evaluate("web_search", "search", params={}, trust_ledger=TrustLedger())
+
+    assert first.allowed
+    assert second.allowed
+    assert not third.allowed
+    assert "exceeded quota" in third.reason
+
+
+def test_default_policy_quota_reset_restores_capacity():
+    policy = DefaultExecutionPolicy(profile="strict")
+    policy.evaluate("web_search", "search", params={}, trust_ledger=TrustLedger())
+    policy.evaluate("web_search", "search", params={}, trust_ledger=TrustLedger())
+
+    blocked = policy.evaluate("web_search", "search", params={}, trust_ledger=TrustLedger())
+    assert not blocked.allowed
+
+    policy.reset_quota_usage("web_search:search")
+    allowed_again = policy.evaluate("web_search", "search", params={}, trust_ledger=TrustLedger())
+    assert allowed_again.allowed
+
+
 def test_container_runner_sbom_and_vuln_scan():
     from aegis.orchestrator.container_runner import ContainerizedRunner
 
