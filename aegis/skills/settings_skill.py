@@ -149,7 +149,7 @@ class SettingsSkill(Skill):
 
         if sys.platform.startswith("linux"):
             if not shutil.which("pactl"):
-                return SkillResult.fail("pactl not installed")
+                return SkillResult.fail("pactl is required on Linux")
             return self._run_cmd(["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{level}%"]) 
 
         return SkillResult.fail("Unsupported OS for volume settings")

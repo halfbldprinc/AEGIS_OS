@@ -159,6 +159,7 @@ class MemoryStore:
 
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         query_emb = self.embedding_model.encode([query])[0]
+        query_terms = self._tokenize(query)
 
         candidates = self.list(limit=1000)
         scores = []
@@ -166,7 +167,12 @@ class MemoryStore:
         for entry in candidates:
             if not entry.embedding:
                 continue
-            score = self._cosine_similarity(query_emb, entry.embedding)
+            # Embedding backends can produce vectors with mismatched dimensions
+            # across independently encoded texts. Blend cosine with lexical overlap
+            # so search remains functional and deterministic.
+            cosine_score = self._cosine_similarity(query_emb, entry.embedding)
+            lexical_score = self._lexical_overlap_score(query_terms, self._tokenize(entry.text))
+            score = max(cosine_score, lexical_score)
             scores.append((score, entry))
 
         scores.sort(key=lambda x: x[0], reverse=True)
@@ -183,6 +189,20 @@ class MemoryStore:
             )
 
         return results
+
+    @staticmethod
+    def _tokenize(text: str) -> List[str]:
+        return [t for t in re.findall(r"\w+", text.lower()) if len(t) > 1]
+
+    @staticmethod
+    def _lexical_overlap_score(query_terms: List[str], text_terms: List[str]) -> float:
+        if not query_terms or not text_terms:
+            return 0.0
+        q = set(query_terms)
+        t = set(text_terms)
+        if not q:
+            return 0.0
+        return len(q.intersection(t)) / float(len(q))
 
     @staticmethod
     def _cosine_similarity(a: List[float], b: List[float]) -> float:
