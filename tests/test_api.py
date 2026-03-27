@@ -293,6 +293,22 @@ def test_update_lifecycle_endpoints(tmp_path):
     assert response.json()["status"] == "applied"
 
 
+def test_desktop_integration_endpoints(tmp_path):
+    response = client.get("/v1/desktop/integration/status", params={"home_dir": str(tmp_path)})
+    assert response.status_code == 200
+    data = response.json()
+    assert "autostart_installed" in data
+    assert "launcher_installed" in data
+
+    response = client.post(
+        "/v1/desktop/integration/install-user-hooks",
+        json={"home_dir": str(tmp_path), "dry_run": True},
+    )
+    assert response.status_code == 200
+    planned = response.json()
+    assert planned["status"] == "planned"
+
+
 def test_sync_connect_endpoint_rejects_invalid_port():
     response = client.post("/v1/sync/connect", json={"peer_id": "p1", "address": "127.0.0.1", "port": 0})
     assert response.status_code == 422

@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from pydantic import BaseModel, Field
 
 from .daemon import AegisDaemon
+from .desktop_integration import DesktopIntegrationManager
 from .evolution import EvolutionManager
 from .guardian import Guardian
 from .memory import MemoryStore
@@ -551,6 +552,7 @@ security_manager = SecurityManager()
 evolution_manager = EvolutionManager()
 
 update_manager = UpdateManager()
+desktop_integration_manager = DesktopIntegrationManager()
 
 
 class UpdatePayload(BaseModel):
@@ -564,6 +566,11 @@ class ApplyUpdatePayload(BaseModel):
     component: str = Field(min_length=1, max_length=32)
     version: str = Field(min_length=1, max_length=64)
     source: str = Field(default="manual", min_length=1, max_length=64)
+
+
+class DesktopHooksPayload(BaseModel):
+    home_dir: Optional[str] = None
+    dry_run: bool = False
 
 
 @app.get("/v1/update/status")
@@ -596,6 +603,16 @@ def apply_update(payload: ApplyUpdatePayload) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"status": "applied", "record": record}
+
+
+@app.get("/v1/desktop/integration/status")
+def desktop_integration_status(home_dir: Optional[str] = None) -> dict:
+    return desktop_integration_manager.status(home_dir=home_dir)
+
+
+@app.post("/v1/desktop/integration/install-user-hooks")
+def install_desktop_user_hooks(payload: DesktopHooksPayload) -> dict:
+    return desktop_integration_manager.install_user_hooks(home_dir=payload.home_dir, dry_run=payload.dry_run)
 
 
 @app.get("/v1/security/status")
