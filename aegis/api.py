@@ -14,6 +14,7 @@ from .guardian import Guardian
 from .memory import MemoryStore
 from .orchestrator import Plan
 from .security import SecurityManager
+from .update_manager import UpdateManager
 from .logging import configure_logging
 
 # Provide explicit lifespan hooks for startup/shutdown.
@@ -548,6 +549,53 @@ def approve_evolution(proposal_id: str) -> dict:
 security_manager = SecurityManager()
 
 evolution_manager = EvolutionManager()
+
+update_manager = UpdateManager()
+
+
+class UpdatePayload(BaseModel):
+    component: str = Field(min_length=1, max_length=32)
+    version: str = Field(min_length=1, max_length=64)
+    channel: str = Field(default="stable", min_length=1, max_length=32)
+    notes: str = Field(default="", max_length=2000)
+
+
+class ApplyUpdatePayload(BaseModel):
+    component: str = Field(min_length=1, max_length=32)
+    version: str = Field(min_length=1, max_length=64)
+    source: str = Field(default="manual", min_length=1, max_length=64)
+
+
+@app.get("/v1/update/status")
+def get_update_status() -> dict:
+    return update_manager.status()
+
+
+@app.post("/v1/update/available")
+def set_update_available(payload: UpdatePayload) -> dict:
+    try:
+        available = update_manager.set_available_update(
+            component=payload.component,
+            version=payload.version,
+            channel=payload.channel,
+            notes=payload.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"status": "registered", "component": payload.component, "available": available}
+
+
+@app.post("/v1/update/apply")
+def apply_update(payload: ApplyUpdatePayload) -> dict:
+    try:
+        record = update_manager.apply_update(
+            component=payload.component,
+            version=payload.version,
+            source=payload.source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"status": "applied", "record": record}
 
 
 @app.get("/v1/security/status")

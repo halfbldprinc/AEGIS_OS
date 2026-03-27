@@ -254,6 +254,45 @@ def test_ops_chaos_endpoint():
     assert response.json()["scenario"] == "voice_interrupt"
 
 
+def test_update_lifecycle_endpoints(tmp_path):
+    from aegis.api import update_manager
+
+    update_manager.state_path = tmp_path / "update_state.json"
+    update_manager._state = {
+        "current": {"os": "0.1.0", "agent": "0.1.0", "model": "unknown"},
+        "available": {},
+        "history": [],
+    }
+
+    response = client.post(
+        "/v1/update/available",
+        json={
+            "component": "agent",
+            "version": "0.2.1",
+            "channel": "stable",
+            "notes": "test update",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "registered"
+
+    response = client.get("/v1/update/status")
+    assert response.status_code == 200
+    pending = response.json()["pending_updates"]
+    assert any(item["component"] == "agent" and item["available_version"] == "0.2.1" for item in pending)
+
+    response = client.post(
+        "/v1/update/apply",
+        json={
+            "component": "agent",
+            "version": "0.2.1",
+            "source": "test",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "applied"
+
+
 def test_sync_connect_endpoint_rejects_invalid_port():
     response = client.post("/v1/sync/connect", json={"peer_id": "p1", "address": "127.0.0.1", "port": 0})
     assert response.status_code == 422
