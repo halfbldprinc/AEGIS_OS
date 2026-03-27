@@ -82,7 +82,7 @@ class EmbeddingModel:
         return [float(c[t]) for t in terms]
 
     def _tokenize(self, text: str) -> List[str]:
-        return [t for t in re.findall(r"\\w+", text.lower()) if len(t) > 1]
+        return [t for t in re.findall(r"\w+", text.lower()) if len(t) > 1]
 
 
 class MemoryStore:
