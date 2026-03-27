@@ -582,6 +582,10 @@ class PolicyQuotaResetPayload(BaseModel):
     key: Optional[str] = None
 
 
+class PackageSimulatePayload(BaseModel):
+    package: str = Field(min_length=1, max_length=64)
+
+
 @app.get("/v1/update/status")
 def get_update_status() -> dict:
     return update_manager.status()
@@ -659,6 +663,18 @@ def reset_policy_quota(payload: PolicyQuotaResetPayload) -> dict:
     if not isinstance(policy, DefaultExecutionPolicy):
         raise HTTPException(status_code=400, detail="Active policy does not support quota management")
     return policy.reset_quota_usage(key=payload.key)
+
+
+@app.post("/v1/packages/simulate-install")
+def simulate_package_install(payload: PackageSimulatePayload) -> dict:
+    daemon_ref = _get_daemon()
+    skill = daemon_ref.orchestrator.skills.get("package_manager")
+    if skill is None:
+        raise HTTPException(status_code=404, detail="package_manager skill not available")
+    result = skill.execute("simulate_install", {"package": payload.package})
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.error or "package simulation failed")
+    return result.data or {}
 
 
 @app.get("/v1/security/status")

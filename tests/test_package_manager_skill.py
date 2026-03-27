@@ -105,3 +105,16 @@ def test_package_allowlist_enforced(monkeypatch):
 
     assert not result.success
     assert result.error_code == "PACKAGE_NOT_ALLOWED"
+
+
+def test_package_simulate_install_preview(monkeypatch):
+    skill = PackageManagerSkill()
+
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/apt-get" if cmd in {"apt-get", "dpkg-query"} else None)
+
+    result = skill.execute("simulate_install", {"package": "vscode"})
+
+    assert result.success
+    assert result.data["resolved"] == "code"
+    assert result.data["requires_confirmation"] is True
+    assert "apt-get" in result.data["command_preview"][0] or result.data["command_preview"][1] == "apt-get"

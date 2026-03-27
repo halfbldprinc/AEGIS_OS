@@ -12,7 +12,7 @@ from .action_schema import ActionSchema, ParamSpec
 class PackageManagerSkill(Skill):
     name = "package_manager"
     tier = 1
-    allowed_actions = {"resolve", "search", "install", "remove", "upgrade", "list_installed"}
+    allowed_actions = {"resolve", "search", "simulate_install", "install", "remove", "upgrade", "list_installed"}
 
     _PACKAGE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9+._-]{0,63}$")
     _ALIASES = {
@@ -48,6 +48,8 @@ class PackageManagerSkill(Skill):
             return self.resolve(params.get("package", ""))
         if action == "search":
             return self.search(params.get("package", ""), int(params.get("limit", 10)))
+        if action == "simulate_install":
+            return self.simulate_install(params.get("package", ""))
         if action == "install":
             return self.install(params.get("package", ""), bool(params.get("confirmed", False)))
         if action == "remove":
@@ -147,6 +149,39 @@ class PackageManagerSkill(Skill):
         if not result.success:
             return result
         return SkillResult.ok({"action": "install", "backend": backend, "package": resolved})
+
+    def simulate_install(self, package: str) -> SkillResult:
+        backend = self._detect_backend()
+        if backend is None:
+            return SkillResult.fail("No supported package manager found", error_code="NO_PACKAGE_MANAGER")
+
+        normalized = self._normalize_package(package)
+        if not normalized:
+            return SkillResult.fail("'package' parameter is required", error_code="MISSING_PACKAGE")
+        resolved = self._ALIASES.get(normalized, normalized)
+        policy_error = self._check_package_policy(resolved)
+        if policy_error is not None:
+            return policy_error
+
+        if backend == "apt":
+            cmd = ["apt-get", "install", "-y", resolved]
+        elif backend == "dnf":
+            cmd = ["dnf", "install", "-y", resolved]
+        elif backend == "pacman":
+            cmd = ["pacman", "-S", "--noconfirm", resolved]
+        else:
+            cmd = ["brew", "install", resolved]
+
+        return SkillResult.ok(
+            {
+                "action": "simulate_install",
+                "backend": backend,
+                "requested": package,
+                "resolved": resolved,
+                "requires_confirmation": True,
+                "command_preview": self._with_privilege(cmd),
+            }
+        )
 
     def remove(self, package: str, confirmed: bool) -> SkillResult:
         if not confirmed:
@@ -268,6 +303,12 @@ class PackageManagerSkill(Skill):
                 params={
                     "package": package_spec,
                     "confirmed": ParamSpec("confirmed", bool, required=False),
+                },
+                allow_extra=False,
+            ),
+            "simulate_install": ActionSchema(
+                params={
+                    "package": ParamSpec("package", str, required=True, min_length=1, max_length=64),
                 },
                 allow_extra=False,
             ),

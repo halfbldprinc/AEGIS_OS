@@ -345,6 +345,15 @@ def test_policy_quota_endpoints(tmp_path, monkeypatch):
     assert response.json()["status"] == "reset"
 
 
+def test_package_simulate_install_endpoint():
+    app.state.daemon = AegisDaemon()
+    response = client.post("/v1/packages/simulate-install", json={"package": "vscode"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["action"] == "simulate_install"
+    assert payload["requires_confirmation"] is True
+
+
 def test_sync_connect_endpoint_rejects_invalid_port():
     response = client.post("/v1/sync/connect", json={"peer_id": "p1", "address": "127.0.0.1", "port": 0})
     assert response.status_code == 422
