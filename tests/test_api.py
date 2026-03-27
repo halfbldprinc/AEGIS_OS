@@ -390,6 +390,26 @@ def test_control_center_overview_endpoint():
     assert "pending_approvals" in payload
 
 
+def test_activity_feed_endpoint(tmp_path):
+    from aegis.audit import AuditLog
+
+    app.state.daemon = AegisDaemon(audit_log=AuditLog(path=tmp_path / "audit.log"))
+    daemon_ref = app.state.daemon
+
+    baseline = client.get("/v1/activity/feed", params={"offset": 0, "limit": 1})
+    assert baseline.status_code == 200
+    baseline_offset = baseline.json().get("next_offset", 0)
+
+    daemon_ref.audit_log.record("test", "activity_probe", {"ok": True})
+
+    response = client.get("/v1/activity/feed", params={"offset": baseline_offset, "limit": 50})
+    assert response.status_code == 200
+    payload = response.json()
+    assert "events" in payload
+    assert "next_offset" in payload
+    assert any(event.get("event_type") == "activity_probe" for event in payload["events"])
+
+
 def test_desktop_widget_endpoints(tmp_path):
     status = client.get("/v1/desktop/widget/status", params={"home_dir": str(tmp_path)})
     assert status.status_code == 200
@@ -398,6 +418,19 @@ def test_desktop_widget_endpoints(tmp_path):
     install = client.post(
         "/v1/desktop/widget/install",
         json={"home_dir": str(tmp_path), "dry_run": True, "autostart": True},
+    )
+    assert install.status_code == 200
+    assert install.json()["status"] == "planned"
+
+
+def test_desktop_control_panel_endpoints(tmp_path):
+    status = client.get("/v1/desktop/control-panel/status", params={"home_dir": str(tmp_path)})
+    assert status.status_code == 200
+    assert "control_panel_script_installed" in status.json()
+
+    install = client.post(
+        "/v1/desktop/control-panel/install",
+        json={"home_dir": str(tmp_path), "dry_run": True},
     )
     assert install.status_code == 200
     assert install.json()["status"] == "planned"

@@ -753,6 +753,11 @@ class DesktopWidgetPayload(BaseModel):
     autostart: bool = True
 
 
+class DesktopControlPanelPayload(BaseModel):
+    home_dir: Optional[str] = None
+    dry_run: bool = False
+
+
 class PolicyProfilePayload(BaseModel):
     profile: str = Field(min_length=1, max_length=32)
 
@@ -855,6 +860,28 @@ def control_center_overview() -> dict:
     }
 
 
+@app.get("/v1/activity/feed")
+def activity_feed(
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> dict:
+    daemon_ref = _get_daemon()
+    events, next_offset = daemon_ref.audit_log.read_from_offset(offset=offset, max_events=limit)
+    return {
+        "offset": offset,
+        "next_offset": next_offset,
+        "events": [
+            {
+                "timestamp": event.timestamp,
+                "source": event.source,
+                "event_type": event.event_type,
+                "details": event.details,
+            }
+            for event in events
+        ],
+    }
+
+
 @app.get("/v1/desktop/integration/status")
 def desktop_integration_status(home_dir: Optional[str] = None) -> dict:
     return desktop_integration_manager.status(home_dir=home_dir)
@@ -877,6 +904,16 @@ def install_desktop_widget(payload: DesktopWidgetPayload) -> dict:
         dry_run=payload.dry_run,
         autostart=payload.autostart,
     )
+
+
+@app.get("/v1/desktop/control-panel/status")
+def desktop_control_panel_status(home_dir: Optional[str] = None) -> dict:
+    return desktop_integration_manager.control_panel_status(home_dir=home_dir)
+
+
+@app.post("/v1/desktop/control-panel/install")
+def install_desktop_control_panel(payload: DesktopControlPanelPayload) -> dict:
+    return desktop_integration_manager.install_control_panel(home_dir=payload.home_dir, dry_run=payload.dry_run)
 
 
 @app.get("/v1/policy/profile")
